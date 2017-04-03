@@ -81,6 +81,8 @@ int session_check_incoming_data_unsafe(ab_session_p session);
 int request_check_outgoing_data_unsafe(ab_session_p session, ab_request_p req);
 tag_vtable_p set_tag_vtable(ab_tag_p tag);
 //int setup_session_mutex(void);
+static int check_read_group(ab_tag_p tag, const char *read_group);
+static int read_group_remove_tag(ab_tag_p tag);
 
 /* declare this so that the library initializer can pass it to atexit() */
 
@@ -345,6 +347,16 @@ plc_tag_p ab_tag_create(attr attribs)
         return (plc_tag_p)tag;
     }
 
+    /*
+     * check for a read group.
+     */
+
+    if(/*tag->protocol_type == AB_PROTOCOL_LGX &&*/ check_read_group(tag, attr_get_str(attribs,"read_group",NULL)) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_INFO,"Unable to find or create read group!");
+        tag->status = PLCTAG_ERR_BAD_PARAM;
+        return (plc_tag_p)tag;
+    }
+
     pdebug(DEBUG_INFO,"Done.");
 
     return (plc_tag_p)tag;
@@ -493,6 +505,9 @@ int ab_tag_destroy(ab_tag_p tag)
          */
         /* remove - this is already called by the main library code. */
         plc_tag_abort_mapped((plc_tag_p)tag);
+
+        /* remove from any read groups */
+        read_group_remove_tag(tag);
 
         /* tags are stored in different locations depending on the type. */
         if(connection) {
@@ -1177,3 +1192,157 @@ void* request_handler_func(void* not_used)
     return NULL;
 #endif
 }
+
+
+
+
+
+
+
+/*
+ * read group stuff.  FIXME - move to another file
+ */
+
+
+#define MAX_READ_GROUPS (300)
+#define MAX_READ_GROUP_NAME_SIZE (64)
+
+struct {
+    int in_use;
+    char name[MAX_READ_GROUP_NAME_SIZE+1];
+    ab_session_p session;
+    ab_connection_p connection;
+    ab_tag_p tags;
+} read_group_entries[MAX_READ_GROUPS] = {0,};
+
+
+
+
+
+int check_read_group(ab_tag_p tag, const char *read_group)
+{
+    int rc = PLCTAG_STATUS_OK;
+
+    pdebug(DEBUG_INFO,"Starting.");
+
+    /* punt if there is no read group configured */
+    if(!read_group) {
+        pdebug(DEBUG_INFO,"No read group configured for this tag.  Nothing to do.");
+        return PLCTAG_STATUS_OK;
+    }
+
+    /* check name size */
+    if(str_length(read_group) < 1 || str_length(read_group) > MAX_READ_GROUP_NAME_SIZE) {
+        pdebug(DEBUG_INFO,"Read group name must be at least 1 and at most 64 characters.");
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+
+    /* search for the group for this tag. */
+    critical_block(global_session_mut) {
+        int i = 0;
+        int unused = -1;
+        int found = -1;
+
+        for(i=0; i < MAX_READ_GROUPS; i++) {
+            /* do the easy comparisons first */
+            if(read_group_entries[i].in_use && tag->session == read_group_entries[i].session && tag->connection == read_group_entries[i].connection) {
+                if(str_cmp_i(read_group, read_group_entries[i].name) == 0) {
+                    found = i;
+                    break; /* found one */
+                }
+            }
+
+            /* find the first unused one */
+            if(unused == -1 && !read_group_entries[i].in_use) {
+                unused = i;
+                pdebug(DEBUG_DETAIL,"Found first unused slot %d", unused);
+            }
+        }
+
+        if(found >= 0) {
+            pdebug(DEBUG_INFO,"Using existing slot %d", found);
+            tag->read_group = found + 1;
+            tag->next = read_group_entries[found].tags;
+            read_group_entries[found].tags = tag;
+        } else {
+            /* not found, make an entry */
+            if(unused >= 0) {
+                pdebug(DEBUG_INFO,"Creating new entry at slot %d",unused);
+                read_group_entries[unused].in_use = 1;
+                read_group_entries[unused].session = tag->session;
+                read_group_entries[unused].connection = tag->connection;
+                read_group_entries[unused].tags = tag;
+                tag->next = NULL;
+                tag->read_group = unused + 1; /* FIXME - no magic offsets! */
+                str_copy(&(read_group_entries[unused].name[0]), read_group, MAX_READ_GROUP_NAME_SIZE);
+            } else {
+                pdebug(DEBUG_ERROR,"All read group entries are currently in use!");
+                rc = PLCTAG_ERR_CREATE;
+            }
+        }
+    }
+
+    pdebug(DEBUG_INFO,"Done.");
+
+    return rc;
+}
+
+
+
+int read_group_remove_tag(ab_tag_p tag)
+{
+    int rc = PLCTAG_STATUS_OK;
+    int read_group = tag->read_group - 1;
+
+    pdebug(DEBUG_INFO,"Starting.");
+
+    if(read_group < 0) {
+        pdebug(DEBUG_INFO, "Tag has no read group.");
+        return PLCTAG_STATUS_OK;
+    }
+
+    /* this modifies shared state. */
+    critical_block(global_session_mut) {
+        ab_tag_p *walker = &read_group_entries[read_group].tags;
+
+        while(*walker && *walker != tag) {
+            walker = &((*walker)->next);
+        }
+
+        /* did we find it? */
+        if(*walker == tag) {
+            pdebug(DEBUG_INFO,"Found the tag, removing it from the list.");
+            *walker = tag->next;
+
+            /* if there are no tags left, recycle the resource. */
+            if(read_group_entries[read_group].tags == NULL) {
+                pdebug(DEBUG_INFO,"No tags left in read group %d, clear it for reuse.", read_group);
+                read_group_entries[read_group].in_use = 0;
+                read_group_entries[read_group].connection = NULL;
+                read_group_entries[read_group].session = NULL;
+                read_group_entries[read_group].name[0] = 0;
+            } else {
+                pdebug(DEBUG_INFO,"read group still has remaining tags.");
+            }
+        } else {
+            pdebug(DEBUG_WARN,"Tag not found in read group %d!", read_group);
+        }
+    }
+
+    return rc;
+}
+
+
+
+ab_tag_p read_group_get_tags_unsafe(ab_tag_p tag)
+{
+    int read_group = tag->read_group - 1;
+
+    if(read_group < 0) {
+        return NULL;
+    }
+
+    return read_group_entries[read_group].tags;
+}
+
+

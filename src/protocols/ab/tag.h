@@ -73,6 +73,10 @@ struct ab_tag_t {
     int elem_count;
     int elem_size;
 
+    /* group information */
+    int read_group;
+    int read_group_seq;
+
     /* requests */
     int pre_write_read;
     int first_read;

@@ -184,6 +184,7 @@ if (UNIX)
                            slc500
                            stress_test
                            string
+                           test_groups
                            test_special
                            toggle_bool
                            write_string
@@ -198,6 +199,7 @@ elseif(WIN32)
                            simple_dual
                            slc500
                            string
+                           test_groups
                            test_special
                            toggle_bool
                            write_string

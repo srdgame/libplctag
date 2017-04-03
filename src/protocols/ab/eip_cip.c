@@ -457,20 +457,109 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
     //embed_start = data;
 
     /* set up the CIP Read request */
-    *data = AB_EIP_CMD_CIP_READ_FRAG;
-    data++;
+    pdebug(DEBUG_DETAIL,"Tag read group is %d",tag->read_group);
+    if(tag->read_group) {
+        /* FIXME - this should be done in a better, non-blocking way. */
+        critical_block(global_session_mut) {
+            /*
+             * scan the list of tags for this read group.   We need to
+             * be careful with concurrency here because the read group
+             * list of tags could be changed on a different thread.
+             */
+            int total_space = 1 /* Multi service code */
+                             +2 /* number of requests */
+                             ;
+            int total_tags = 0;
 
-    /* copy the tag name into the request */
-    mem_copy(data, tag->encoded_name, tag->encoded_name_size);
-    data += tag->encoded_name_size;
+            ab_tag_p t = read_group_get_tags_unsafe(tag);
 
-    /* add the count of elements to read. */
-    *((uint16_t*)data) = h2le16(tag->elem_count);
-    data += sizeof(uint16_t);
+            /* loop over the tags to get the amount of space needed. */
+            for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next) {
+                total_space = total_space
+                              +2 /* offset of request */
+                              +1 /* Read request */
+                              +temp_tag->encoded_name_size /* size of the name */
+                              +2 /* element count */
+                              +4 /* byte offset for the request */
+                              ;
+                total_tags++;
+            }
 
-    /* add the byte offset for this request */
-    *((uint32_t*)data) = h2le32(byte_offset);
-    data += sizeof(uint32_t);
+            pdebug(DEBUG_INFO,"total space required for group read packet is %d", total_space);
+            pdebug(DEBUG_INFO,"processing %d tags for multi-service request.", total_tags);
+
+            if(total_space > 400) { /* FIXME - no magic constants */
+                rc = PLCTAG_ERR_TOO_LONG;
+            } else {
+                uint8_t *packet_start, *offset_start;
+
+                /* so far so good, build the thing. */
+                *data = AB_EIP_CMD_CIP_MULTI;
+                data++;
+
+                /* put in the Message Router path */
+                *data = 2;      /* path length of 2 */
+                data++;
+                *data = 0x20;   /* class */
+                data++;
+                *data = 0x02;   /* message router class */
+                data++;
+                *data = 0x24;   /* instance */
+                data++;
+                *data = 0x01;   /* message router class instance #1 */
+                data++;
+
+                /* save the packet start for later use */
+                packet_start = data;
+
+                /* how many requests */
+                *((uint16_t*)data) = h2le16(total_tags);
+                data += sizeof(uint16_t);
+
+                offset_start = data;
+
+                /* reserve space for offsets. */
+                data += sizeof(uint16_t) * total_tags;
+
+                for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next) {
+                    /* save the start offset of this request */
+                    *((uint16_t*)offset_start) = h2le16((uint16_t)(data - packet_start));
+                    offset_start += sizeof(uint16_t);
+
+                    /* record the type of the request */
+                    *data = AB_EIP_CMD_CIP_READ_FRAG;
+                    data++;
+
+                    /* copy encoded tag name. */
+                    mem_copy(data, temp_tag->encoded_name, temp_tag->encoded_name_size);
+                    data += temp_tag->encoded_name_size;
+
+                    /* add the count of elements to read. */
+                    *((uint16_t*)data) = h2le16(temp_tag->elem_count);
+                    data += sizeof(uint16_t);
+
+                    /* add the byte offset for this request, FIXME - this is per request? */
+                    *((uint32_t*)data) = h2le32(byte_offset);
+                    data += sizeof(uint32_t);
+                 }
+            }
+        }
+    } else {
+        *data = AB_EIP_CMD_CIP_READ_FRAG;
+        data++;
+
+        /* copy the tag name into the request */
+        mem_copy(data, tag->encoded_name, tag->encoded_name_size);
+        data += tag->encoded_name_size;
+
+        /* add the count of elements to read. */
+        *((uint16_t*)data) = h2le16(tag->elem_count);
+        data += sizeof(uint16_t);
+
+        /* add the byte offset for this request */
+        *((uint32_t*)data) = h2le32(byte_offset);
+        data += sizeof(uint32_t);
+    }
 
     /* now we go back and fill in the fields of the static part */
 
@@ -504,8 +593,8 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
-		request_release(req);
-		tag->reqs[slot] = NULL;
+        request_release(req);
+        tag->reqs[slot] = NULL;
         return rc;
     }
 
@@ -554,21 +643,109 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
 
     embed_start = data;
 
-    /* set up the CIP Read request */
-    *data = AB_EIP_CMD_CIP_READ_FRAG;
-    data++;
+        if(tag->read_group) {
+        /* FIXME - this should be done in a better, non-blocking way. */
+        critical_block(global_session_mut) {
+            /*
+             * scan the list of tags for this read group.   We need to
+             * be careful with concurrency here because the read group
+             * list of tags could be changed on a different thread.
+             */
+            int total_space = 1 /* Multi service code */
+                             +2 /* number of requests */
+                             ;
+            int total_tags = 0;
 
-    /* copy the tag name into the request */
-    mem_copy(data, tag->encoded_name, tag->encoded_name_size);
-    data += tag->encoded_name_size;
+            ab_tag_p t = read_group_get_tags_unsafe(tag);
 
-    /* add the count of elements to read. */
-    *((uint16_t*)data) = h2le16(tag->elem_count);
-    data += sizeof(uint16_t);
+            /* loop over the tags to get the amount of space needed. */
+            for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next) {
+                total_space = total_space
+                              +2 /* offset of request */
+                              +1 /* Read request */
+                              +temp_tag->encoded_name_size /* size of the name */
+                              +2 /* element count */
+                              +4 /* byte offset for the request */
+                              ;
+                total_tags++;
+            }
 
-    /* add the byte offset for this request */
-    *((uint32_t*)data) = h2le32(byte_offset);
-    data += sizeof(uint32_t);
+            pdebug(DEBUG_INFO,"total space required for group read packet is %d", total_space);
+            pdebug(DEBUG_INFO,"processing %d tags for multi-service request.", total_tags);
+
+            if(total_space > 400) { /* FIXME - no magic constants */
+                rc = PLCTAG_ERR_TOO_LONG;
+            } else {
+                uint8_t *packet_start, *offset_start;
+
+                /* so far so good, build the thing. */
+                *data = AB_EIP_CMD_CIP_MULTI;
+                data++;
+
+                /* put in the Message Router path */
+                *data = 2;      /* path length of 2 */
+                data++;
+                *data = 0x20;   /* class */
+                data++;
+                *data = 0x02;   /* message router class */
+                data++;
+                *data = 0x24;   /* instance */
+                data++;
+                *data = 0x01;   /* message router class instance #1 */
+                data++;
+
+                /* save the packet start for later use */
+                packet_start = data;
+
+                /* how many requests */
+                *((uint16_t*)data) = h2le16(total_tags);
+                data += sizeof(uint16_t);
+
+                offset_start = data;
+
+                /* reserve space for offsets. */
+                data += sizeof(uint16_t) * total_tags;
+
+                for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next) {
+                    /* save the start offset of this request */
+                    *((uint16_t*)offset_start) = h2le16((uint16_t)(data - packet_start));
+                    offset_start += sizeof(uint16_t);
+
+                    /* record the type of the request */
+                    *data = AB_EIP_CMD_CIP_READ_FRAG;
+                    data++;
+
+                    /* copy encoded tag name. */
+                    mem_copy(data, temp_tag->encoded_name, temp_tag->encoded_name_size);
+                    data += temp_tag->encoded_name_size;
+
+                    /* add the count of elements to read. */
+                    *((uint16_t*)data) = h2le16((uint16_t)(temp_tag->elem_count));
+                    data += sizeof(uint16_t);
+
+                    /* add the byte offset for this request, FIXME - this is per request? */
+                    *((uint32_t*)data) = h2le32(byte_offset);
+                    data += sizeof(uint32_t);
+                 }
+            }
+        }
+    } else {
+        /* set up the CIP Read request */
+        *data = AB_EIP_CMD_CIP_READ_FRAG;
+        data++;
+
+        /* copy the tag name into the request */
+        mem_copy(data, tag->encoded_name, tag->encoded_name_size);
+        data += tag->encoded_name_size;
+
+        /* add the count of elements to read. */
+        *((uint16_t*)data) = h2le16(tag->elem_count);
+        data += sizeof(uint16_t);
+
+        /* add the byte offset for this request */
+        *((uint32_t*)data) = h2le32(byte_offset);
+        data += sizeof(uint32_t);
+    }
 
     /* mark the end of the embedded packet */
     embed_end = data;
@@ -631,8 +808,8 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
-		request_release(req);
-		tag->reqs[slot] = NULL;
+        request_release(req);
+        tag->reqs[slot] = NULL;
         return rc;
     }
 
@@ -746,7 +923,7 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
 
     /* store the connection */
     req->connection = tag->connection;
-    
+
     /* mark the request as a connected request */
     req->connected_request = 1;
 
@@ -755,8 +932,8 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
-		request_release(req);
-		tag->reqs[slot] = NULL;
+        request_release(req);
+        tag->reqs[slot] = NULL;
         return rc;
     }
 
@@ -906,8 +1083,8 @@ int build_write_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
-		request_release(req);
-		tag->reqs[slot] = NULL;
+        request_release(req);
+        tag->reqs[slot] = NULL;
         return rc;
     }
 

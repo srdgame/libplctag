@@ -81,6 +81,7 @@ int recv_eip_response_unsafe(ab_session_p session);
 #define AB_EIP_CMD_FORWARD_OPEN         ((uint8_t)0x54)
 
 /* CIP embedded packet commands */
+#define AB_EIP_CMD_CIP_MULTI            ((uint8_t)0x0A)
 #define AB_EIP_CMD_CIP_READ             ((uint8_t)0x4C)
 #define AB_EIP_CMD_CIP_WRITE            ((uint8_t)0x4D)
 #define AB_EIP_CMD_CIP_READ_FRAG        ((uint8_t)0x52)

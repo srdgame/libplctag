@@ -54,6 +54,7 @@ int ab_tag_destroy(ab_tag_p p_tag);
 int check_cpu(ab_tag_p tag, attr attribs);
 int check_tag_name(ab_tag_p tag, const char *name);
 int check_mutex(int debug);
+extern ab_tag_p read_group_get_tags_unsafe(ab_tag_p tag);
 
 
 #ifdef _WIN32
