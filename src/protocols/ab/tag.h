@@ -75,7 +75,7 @@ struct ab_tag_t {
 
     /* group information */
     int read_group;
-    int read_group_seq;
+    int read_group_index;
 
     /* requests */
     int pre_write_read;

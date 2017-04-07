@@ -55,7 +55,8 @@ int check_cpu(ab_tag_p tag, attr attribs);
 int check_tag_name(ab_tag_p tag, const char *name);
 int check_mutex(int debug);
 extern ab_tag_p read_group_get_tags_unsafe(ab_tag_p tag);
-
+extern ab_tag_p read_group_get_driver_unsafe(ab_tag_p tag);
+extern ab_tag_p read_group_set_driver_unsafe(ab_tag_p tag);
 
 #ifdef _WIN32
 DWORD __stdcall request_handler_func(LPVOID not_used);

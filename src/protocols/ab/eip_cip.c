@@ -163,6 +163,10 @@ int eip_cip_tag_status(ab_tag_p tag)
  * the tag's mutex is locked.
  *
  * The function starts the process of getting tag data from the PLC.
+ *
+ * Changes due to group reads:
+ *      It is now required that we synchronize to avoid the read group
+ *      from causing tags to trigger reads against each other.
  */
 
 int eip_cip_tag_read_start(ab_tag_p tag)
@@ -170,8 +174,42 @@ int eip_cip_tag_read_start(ab_tag_p tag)
     int rc = PLCTAG_STATUS_OK;
     int i;
     int byte_offset = 0;
+    int alread_reading = 0;
 
     pdebug(DEBUG_INFO, "Starting");
+
+    /* this must be synchronized.  FIXME - do not use the global mutex! */
+    critical_block(global_session_mut) {
+        if(tag->read_in_progress) {
+            /* oops, a read is already happening! */
+            pdebug(DEBUG_INFO,"Read already in progress.");
+            rc = PLCTAG_STATUS_OK;
+            already_reading = 1;
+        } else {
+            /* not doing a read yet. */
+            if(tag->read_group) {
+                ab_tag_p t = read_group_get_tags_unsafe(tag);
+
+                /*
+                 * scan the list of tags for this read group.   We need to
+                 * be careful with concurrency here because the read group
+                 * list of tags could be changed on a different thread.
+                 */
+
+                /* loop over the tags to show the read is progressing. */
+                for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next) {
+                    temp_tag->read_in_progress = 1;
+                    /* FIXME - what else do we need to do here? */
+                }
+
+                /* FIXME - need to make sure that abort knows about read groups! */
+            }
+        }
+    }
+
+    if(already_reading) {
+        return rc;
+    }
 
     /* is this the first read? */
     if (tag->first_read) {
@@ -466,7 +504,7 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
              * be careful with concurrency here because the read group
              * list of tags could be changed on a different thread.
              */
-            int total_space = 1 /* Multi service code */
+            int total_space = 1 + 5 /* Multi service code, plus route */
                              +2 /* number of requests */
                              ;
             int total_tags = 0;
@@ -541,7 +579,7 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
                     /* add the byte offset for this request, FIXME - this is per request? */
                     *((uint32_t*)data) = h2le32(byte_offset);
                     data += sizeof(uint32_t);
-                 }
+                }
             }
         }
     } else {
@@ -643,7 +681,7 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
 
     embed_start = data;
 
-        if(tag->read_group) {
+    if(tag->read_group) {
         /* FIXME - this should be done in a better, non-blocking way. */
         critical_block(global_session_mut) {
             /*
@@ -677,6 +715,7 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
                 rc = PLCTAG_ERR_TOO_LONG;
             } else {
                 uint8_t *packet_start, *offset_start;
+                int tag_index = 0;
 
                 /* so far so good, build the thing. */
                 *data = AB_EIP_CMD_CIP_MULTI;
@@ -706,7 +745,10 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
                 /* reserve space for offsets. */
                 data += sizeof(uint16_t) * total_tags;
 
-                for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next) {
+                for(ab_tag_p temp_tag = t; temp_tag; temp_tag = temp_tag->next, tag_index++) {
+                    /* mark this tag as a specific one in the offsets. */
+                    temp_tag->read_group_index = tag_index;
+
                     /* save the start offset of this request */
                     *((uint16_t*)offset_start) = h2le16((uint16_t)(data - packet_start));
                     offset_start += sizeof(uint16_t);
@@ -726,7 +768,7 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
                     /* add the byte offset for this request, FIXME - this is per request? */
                     *((uint32_t*)data) = h2le32(byte_offset);
                     data += sizeof(uint32_t);
-                 }
+                }
             }
         }
     } else {
@@ -1120,18 +1162,45 @@ static int check_read_status_connected(ab_tag_p tag)
 
     pdebug(DEBUG_DETAIL, "Starting.");
 
-    /* is there an outstanding request? */
-    if (!tag->reqs) {
-        tag->read_in_progress = 0;
-        pdebug(DEBUG_WARN,"Read in progress, but no requests in flight!");
-        return PLCTAG_ERR_NULL_PTR;
-    }
+    /*
+     * This gets a little tricky with group reads.  The group might be reading,
+     * but the driving tag might not be this one.  In that case, we are marked as
+     * having a read in flight, but we will NOT have any requests allocated
+     * in this tag.
+     */
 
-    for (i = 0; i < tag->num_read_requests; i++) {
-        if (tag->reqs[i] && !tag->reqs[i]->resp_received) {
+    if(tag->read_group) {
+        /* this tag is part of a read group. */
+        ab_tag_p driver_tag = NULL;
+
+        critical_block(global_session_mut) {
+            /* if this tag is not the driver, then we need to punt. */
+            driver_tag = read_group_get_driver_unsafe(tag);
+        }
+
+        if(driver_tag != tag && tag->read_in_progress) {
+            /* we are not the driver and there is a read happening. */
             return PLCTAG_STATUS_PENDING;
         }
+
+        /* FIXME - this needs to be finished! */
+    } else {
+        /* this is not part of a read group */
+
+        /* is there an outstanding request? */
+        if (!tag->reqs) {
+            tag->read_in_progress = 0;
+            pdebug(DEBUG_WARN,"Read in progress, but no requests in flight!");
+            return PLCTAG_ERR_NULL_PTR;
+        }
+
+        for (i = 0; i < tag->num_read_requests; i++) {
+            if (tag->reqs[i] && !tag->reqs[i]->resp_received) {
+                return PLCTAG_STATUS_PENDING;
+            }
+        }
     }
+
 
     /*
      * process each request.  If there is more than one request, then

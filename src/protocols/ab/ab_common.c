@@ -351,7 +351,7 @@ plc_tag_p ab_tag_create(attr attribs)
      * check for a read group.
      */
 
-    if(/*tag->protocol_type == AB_PROTOCOL_LGX &&*/ check_read_group(tag, attr_get_str(attribs,"read_group",NULL)) != PLCTAG_STATUS_OK) {
+    if(tag->protocol_type == AB_PROTOCOL_LGX && check_read_group(tag, attr_get_str(attribs,"read_group",NULL)) != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_INFO,"Unable to find or create read group!");
         tag->status = PLCTAG_ERR_BAD_PARAM;
         return (plc_tag_p)tag;
@@ -1210,6 +1210,7 @@ void* request_handler_func(void* not_used)
 struct {
     int in_use;
     char name[MAX_READ_GROUP_NAME_SIZE+1];
+    ab_tag_p driving_tag;
     ab_session_p session;
     ab_connection_p connection;
     ab_tag_p tags;
@@ -1344,5 +1345,39 @@ ab_tag_p read_group_get_tags_unsafe(ab_tag_p tag)
 
     return read_group_entries[read_group].tags;
 }
+
+
+
+ab_tag_p read_group_get_driver_unsafe(ab_tag_p tag)
+{
+    int read_group = tag->read_group - 1;
+
+    if(read_group < 0) {
+        return NULL;
+    }
+
+    return read_group_entries[read_group].driving_tag;
+}
+
+
+ab_tag_p read_group_set_driver_unsafe(ab_tag_p tag)
+{
+    int read_group = tag->read_group - 1;
+    ab_tag_p old_driver;
+
+    if(read_group < 0) {
+        return NULL;
+    }
+
+    old_driver = read_group_entries[read_group].driving_tag;
+
+    read_group_entries[read_group].driving_tag = tag;
+
+    return old_driver;
+}
+
+
+
+
 
 
