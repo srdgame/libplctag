@@ -35,7 +35,12 @@
 
 void ab_teardown(void);
 int ab_init();
-plc_tag_p ab_tag_create(attr attribs);
-
+plc_tag_p ab_logix_conn_group_create(attr attribs);
+plc_tag_p ab_logix_conn_create(attr attribs);
+plc_tag_p ab_logix_unconn_group_create(attr attribs);
+plc_tag_p ab_logix_unconn_create(attr attribs);
+plc_tag_p ab_micro800_create(attr attribs);
+plc_tag_p ab_eip_pccc_dhp_bridge_create(attr attribs);
+plc_tag_p ab_eip_pccc_create(attr attribs);
 
 #endif

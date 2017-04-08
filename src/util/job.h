@@ -1,6 +1,6 @@
 /***************************************************************************
- *   Copyright (C) 2015 by OmanTek                                         *
- *   Author Kyle Hayes  kylehayes@omantek.com                              *
+ *   Copyright (C) 2017 by Kyle Hayes                                      *
+ *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -18,21 +18,26 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-/**************************************************************************
- * CHANGE LOG                                                             *
- *                                                                        *
- * 2013-11-19  KRH - Created file.                                        *
- **************************************************************************/
+#ifndef __PLCTAG_UTIL_JOB_H__
+#define __PLCTAG_UTIL_JOB_H__
 
-#ifndef __LIBPLCTAG_AB_EIP_PCCC_H__
-#define __LIBPLCTAG_AB_EIP_PCCC_H__
+/* called by the library init function */
+extern int job_init();
+extern int job_teardown();
 
-#include <ab/ab_common.h>
+/*
+ * job_create
+ * 
+ * Create a new job.  It will be scheduled and continue to run until it returns
+ * JOB_STOP.  The job is responsible for cleaning up the context.  The job function
+ * must return JOB_CONTINUE in order to keep being scheduled.
+ * 
+ * Jobs MUST NOT BLOCK!   They are not at all preemptive.
+ */
+ 
+extern int job_create(const char *name, void *context, int (*job_func)(void *context, int terminate));
 
-/* PCCC */
-int eip_pccc_tag_status(ab_tag_p tag);
-int eip_pccc_tag_read_start(ab_tag_p tag);
-int eip_pccc_tag_write_start(ab_tag_p tag);
-
+#define JOB_STOP (0)
+#define JOB_CONTINUE (1)
 
 #endif

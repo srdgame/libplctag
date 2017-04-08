@@ -46,12 +46,6 @@ typedef struct plc_tag_t *plc_tag_p;
 
 
 /* define tag operation functions */
-typedef int (*tag_abort_func)(plc_tag_p tag);
-typedef int (*tag_destroy_func)(plc_tag_p tag);
-typedef int (*tag_read_func)(plc_tag_p tag);
-typedef int (*tag_status_func)(plc_tag_p tag);
-typedef int (*tag_write_func)(plc_tag_p tag);
-
 typedef int (*tag_vtable_func)(plc_tag_p tag);
 
 /* we'll need to set these per protocol type. */
