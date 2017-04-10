@@ -18,26 +18,33 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#ifndef __PROTOCOL_SYSTEM_TAG_H__
-#define __PROTOCOL_SYSTEM_TAG_H__ 1
-
+#include <platform.h>
+#include <lib/lib.h>
+#include <lib/teardown.h>
 #include <util/attr.h>
 #include <util/debug.h>
-#include <platform.h>
-#include <lib/tag.h>
-
-#define MAX_SYSTEM_TAG_NAME (20)
-#define MAX_SYSTEM_TAG_SIZE (30)
-
-struct system_tag_t {
-	/* get the generic tag parts.   This must be first for the casting to work! */
-    TAG_INTERNALS
-
-    char name[MAX_SYSTEM_TAG_NAME];
-    uint8_t backing_data[MAX_SYSTEM_TAG_SIZE];
-};
-
-typedef struct system_tag_t *system_tag_p;
+#include <util/job.h>
+#include <ab/ab.h>
 
 
-#endif
+/*
+ * destroy_modules() is called when the main process exits.
+ *
+ * Modify this for any PLC/protocol that needs to have something
+ * torn down at the end.
+ */
+
+void destroy_modules(void)
+{
+	pdebug(DEBUG_INFO,"Tearing down library.");
+	
+    ab_teardown();
+    
+    job_teardown();
+
+    pdebug(DEBUG_INFO,"Destroying global library mutex.");
+    if(global_library_mutex) {
+        mutex_destroy(&global_library_mutex);
+    }
+}
+

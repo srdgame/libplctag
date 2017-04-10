@@ -51,7 +51,6 @@ endif()
 set ( base_SRC_PATH "${PROJECT_SOURCE_DIR}/src" )
 set ( lib_SRC_PATH "${base_SRC_PATH}/lib" )
 set ( protocol_SRC_PATH "${base_SRC_PATH}/protocols" )
-set ( ab_SRC_PATH "${protocol_SRC_PATH}/ab" )
 set ( util_SRC_PATH "${base_SRC_PATH}/util" )
 set ( example_SRC_PATH "${base_SRC_PATH}/examples" )
 
@@ -116,37 +115,21 @@ MESSAGE("BASE_C_FLAGS=${BASE_C_FLAGS}")
 MESSAGE("BASE_CXX_FLAGS=${BASE_CXX_FLAGS}")
 
 # set up the library sources
-set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
+set ( libplctag_SRCS "${lib_SRC_PATH}/api.c"
+                     "${lib_SRC_PATH}/init.c"
                      "${lib_SRC_PATH}/init.h"
+                     "${lib_SRC_PATH}/lib.c"
+                     "${lib_SRC_PATH}/lib.h"
                      "${lib_SRC_PATH}/libplctag.h"
-                     "${lib_SRC_PATH}/libplctag_tag.c"
-                     "${lib_SRC_PATH}/libplctag_tag.h"
-                     "${ab_SRC_PATH}/ab.h"
-                     "${ab_SRC_PATH}/ab_common.c"
-                     "${ab_SRC_PATH}/ab_common.h"
-                     "${ab_SRC_PATH}/cip.c"
-                     "${ab_SRC_PATH}/cip.h"
-                     "${ab_SRC_PATH}/connection.c"
-                     "${ab_SRC_PATH}/connection.h"
-                     "${ab_SRC_PATH}/eip.c"
-                     "${ab_SRC_PATH}/eip.h"
-                     "${ab_SRC_PATH}/eip_cip.c"
-                     "${ab_SRC_PATH}/eip_cip.h"
-                     "${ab_SRC_PATH}/eip_dhp_pccc.c"
-                     "${ab_SRC_PATH}/eip_dhp_pccc.h"
-                     "${ab_SRC_PATH}/eip_pccc.c"
-                     "${ab_SRC_PATH}/eip_pccc.h"
-                     "${ab_SRC_PATH}/error_codes.c"
-                     "${ab_SRC_PATH}/error_codes.h"
-                     "${ab_SRC_PATH}/group.c"
-                     "${ab_SRC_PATH}/group.h"
-                     "${ab_SRC_PATH}/pccc.c"
-                     "${ab_SRC_PATH}/pccc.h"
-                     "${ab_SRC_PATH}/request.c"
-                     "${ab_SRC_PATH}/request.h"
-                     "${ab_SRC_PATH}/session.c"
-                     "${ab_SRC_PATH}/session.h"
-                     "${ab_SRC_PATH}/tag.h"
+                     "${lib_SRC_PATH}/tag.h"
+                     "${lib_SRC_PATH}/teardown.c"
+                     "${lib_SRC_PATH}/teardown.h"
+                     "${protocol_SRC_PATH}/ab/ab.h"
+                     "${protocol_SRC_PATH}/ab/init.c"
+                     "${protocol_SRC_PATH}/ab/init.h"
+                     "${protocol_SRC_PATH}/ab/logix_unconn.c"
+                     "${protocol_SRC_PATH}/ab/teardown.c"
+                     "${protocol_SRC_PATH}/ab/teardown.h"
                      "${protocol_SRC_PATH}/system/system.c"
                      "${protocol_SRC_PATH}/system/system.h"
                      "${protocol_SRC_PATH}/system/tag.h"
@@ -175,25 +158,28 @@ if (WIN32)
 endif()
 
 # add the examples
+#if (UNIX)
+    #set ( example_PROGRAMS async
+                           #data_dumper
+                           #multithread
+                           #multithread_cached_read
+                           #multithread_plc5
+                           #multithread_plc5_dhp
+                           #plc5
+                           #simple
+                           #simple_dual
+                           #slc500
+                           #stress_test
+                           #string
+                           #test_groups
+                           #test_special
+                           #toggle_bool
+                           #write_string
+                           #tag_rw )
+    #set ( example_PROG_UTIL utils_posix.c)
+    #set ( example_LIBRARIES plctag pthread )
 if (UNIX)
-    set ( example_PROGRAMS async
-                           data_dumper
-                           multithread
-                           multithread_cached_read
-                           multithread_plc5
-                           multithread_plc5_dhp
-                           plc5
-                           simple
-                           simple_dual
-                           slc500
-                           stress_test
-                           string
-                           test_groups
-                           test_special
-                           toggle_bool
-                           write_string
-                           tag_rw )
-
+    set ( example_PROGRAMS tag_rw )
     set ( example_PROG_UTIL utils_posix.c)
     set ( example_LIBRARIES plctag pthread )
 elseif(WIN32)

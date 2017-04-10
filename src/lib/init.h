@@ -26,9 +26,5 @@
 
 extern int initialize_modules(void);
 
-typedef plc_tag_p (*tag_create_function)(attr attributes);
-extern tag_create_function find_tag_create_func(attr attributes);
-
-extern const char *VERSION;
 
 #endif

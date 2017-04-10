@@ -61,13 +61,6 @@ extern "C" {
     typedef float real32_t;
 
 
-    /* handy type definitions */
-    typedef int32_t plc_tag;
-
-    #define PLC_TAG_NULL ((plc_tag)0)
-
-
-
     /* library internal status. */
     #define PLCTAG_STATUS_PENDING       (1)
     #define PLCTAG_STATUS_OK            (0)
@@ -148,7 +141,7 @@ extern "C" {
      * not yet fully set up.
      */
 
-    LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout);
+    LIB_EXPORT int plc_tag_create(const char *attrib_str, int timeout);
 
 
     /*
@@ -164,7 +157,7 @@ extern "C" {
      * followed by a call to plc_tag_unlock when you have everything you need from the tag.
      */
 
-    LIB_EXPORT int plc_tag_lock(plc_tag tag);
+    LIB_EXPORT int plc_tag_lock(int tag);
 
 
 
@@ -175,7 +168,7 @@ extern "C" {
      * tag.
      */
 
-    LIB_EXPORT int plc_tag_unlock(plc_tag tag);
+    LIB_EXPORT int plc_tag_unlock(int tag);
 
 
 
@@ -193,7 +186,7 @@ extern "C" {
      *
      * This is a function provided by the underlying protocol implementation.
      */
-    LIB_EXPORT int plc_tag_abort(plc_tag tag);
+    LIB_EXPORT int plc_tag_abort(int tag);
 
 
 
@@ -206,7 +199,7 @@ extern "C" {
      *
      * This is a function provided by the underlying protocol implementation.
      */
-    LIB_EXPORT int plc_tag_destroy(plc_tag tag);
+    LIB_EXPORT int plc_tag_destroy(int tag);
 
 
 
@@ -223,21 +216,9 @@ extern "C" {
      *
      * This is a function provided by the underlying protocol implementation.
      */
-    LIB_EXPORT int plc_tag_read(plc_tag tag, int timeout);
+    LIB_EXPORT int plc_tag_read(int tag, int timeout);
 
 
-
-
-    /*
-     * plc_tag_status
-     *
-     * Return the current status of the tag.  This will be PLCTAG_STATUS_PENDING if there is
-     * an uncompleted IO operation.  It will be PLCTAG_STATUS_OK if everything is fine.  Other
-     * errors will be returned as appropriate.
-     *
-     * This is a function provided by the underlying protocol implementation.
-     */
-    LIB_EXPORT int plc_tag_status(plc_tag tag);
 
 
 
@@ -255,7 +236,7 @@ extern "C" {
      *
      * This is a function provided by the underlying protocol implementation.
      */
-    LIB_EXPORT int plc_tag_write(plc_tag tag, int timeout);
+    LIB_EXPORT int plc_tag_write(int tag, int timeout);
 
 
 
@@ -264,31 +245,44 @@ extern "C" {
      * Tag data accessors.
      */
 
-    LIB_EXPORT int plc_tag_get_size(plc_tag tag);
-
-    LIB_EXPORT uint32_t plc_tag_get_uint32(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_uint32(plc_tag tag, int offset, uint32_t val);
-
-    LIB_EXPORT int32_t plc_tag_get_int32(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_int32(plc_tag, int offset, int32_t val);
+    LIB_EXPORT int plc_tag_get_size(int tag);
+    
+    LIB_EXPORT int plc_tag_get_status(int tag);
 
 
-    LIB_EXPORT uint16_t plc_tag_get_uint16(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_uint16(plc_tag tag, int offset, uint16_t val);
+    LIB_EXPORT uint64_t plc_tag_get_uint64(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_uint64(int tag, int offset, uint64_t val);
 
-    LIB_EXPORT int16_t plc_tag_get_int16(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_int16(plc_tag, int offset, int16_t val);
-
-
-    LIB_EXPORT uint8_t plc_tag_get_uint8(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_uint8(plc_tag tag, int offset, uint8_t val);
-
-    LIB_EXPORT int8_t plc_tag_get_int8(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_int8(plc_tag, int offset, int8_t val);
+    LIB_EXPORT int64_t plc_tag_get_int64(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_int64(int, int offset, int64_t val);
 
 
-    LIB_EXPORT float plc_tag_get_float32(plc_tag tag, int offset);
-    LIB_EXPORT int plc_tag_set_float32(plc_tag tag, int offset, float val);
+    LIB_EXPORT uint32_t plc_tag_get_uint32(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_uint32(int tag, int offset, uint32_t val);
+
+    LIB_EXPORT int32_t plc_tag_get_int32(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_int32(int, int offset, int32_t val);
+
+
+    LIB_EXPORT uint16_t plc_tag_get_uint16(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_uint16(int tag, int offset, uint16_t val);
+
+    LIB_EXPORT int16_t plc_tag_get_int16(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_int16(int, int offset, int16_t val);
+
+
+    LIB_EXPORT uint8_t plc_tag_get_uint8(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_uint8(int tag, int offset, uint8_t val);
+
+    LIB_EXPORT int8_t plc_tag_get_int8(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_int8(int, int offset, int8_t val);
+
+
+    LIB_EXPORT float plc_tag_get_float(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_float(int tag, int offset, float val);
+
+    LIB_EXPORT double plc_tag_get_double(int tag, int offset);
+    LIB_EXPORT int plc_tag_set_double(int tag, int offset, double val);
 
 
 #ifdef __cplusplus

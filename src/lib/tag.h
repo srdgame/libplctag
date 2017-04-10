@@ -1,6 +1,6 @@
 /***************************************************************************
- *   Copyright (C) 2015 by OmanTek                                         *
- *   Author Kyle Hayes  kylehayes@omantek.com                              *
+ *   Copyright (C) 2017 by Kyle Hayes                                      *
+ *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -18,32 +18,14 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-/**************************************************************************
- * CHANGE LOG                                                             *
- *                                                                        *
- * 2012-02-23  KRH - Created file.                                        *
- *                                                                        *
- **************************************************************************/
+#ifndef __PLCTAG_LIB_TAG_H__
+#define __PLCTAG_LIB_TAG_H__
 
-
-#ifndef __LIBPLCTAG_TAG_H__
-#define __LIBPLCTAG_TAG_H__
-
-
-
-
-#include <lib/libplctag.h>
 #include <platform.h>
+#include <lib/libplctag.h>
 #include <util/attr.h>
 
-#define PLCTAG_CANARY (0xACA7CAFE)
-#define PLCTAG_DATA_LITTLE_ENDIAN   (0)
-#define PLCTAG_DATA_BIG_ENDIAN      (1)
-
-extern mutex_p global_library_mutex;
-
 typedef struct plc_tag_t *plc_tag_p;
-
 
 /* define tag operation functions */
 typedef int (*tag_vtable_func)(plc_tag_p tag);
@@ -53,47 +35,43 @@ struct tag_vtable_t {
     tag_vtable_func abort;
     tag_vtable_func destroy;
     tag_vtable_func read;
-    tag_vtable_func status;
     tag_vtable_func write;
 };
 
 typedef struct tag_vtable_t *tag_vtable_p;
 
 
-/*
- * The base definition of the tag structure.  This is used
- * by the protocol-specific implementations.
- *
- * The base type only has a vtable for operations.
- */
+#define TAG_INTERNALS                                                  \
+    int tag_id;                                                        \
+    mutex_p mut;                                                       \
+    int64_t read_cache_expire;                                         \
+    int64_t read_cache_ms;                                             \
+    int status;                                                        \
+	tag_vtable_p vtable;                                               \
+    int size;                                                          \
+    uint8_t *data;                                                     \
+    uint8_t int16_byte_order[2];                                       \
+    uint8_t uint16_byte_order[2];                                      \
+    uint8_t int32_byte_order[4];                                       \
+    uint8_t uint32_byte_order[4];                                      \
+    uint8_t int64_byte_order[8];                                       \
+    uint8_t uint64_byte_order[8];                                      \
+    uint8_t float_byte_order[4];                                       \
+    uint8_t double_byte_order[8];                                      
+                                                                      
 
-#define TAG_BASE_STRUCT tag_vtable_p vtable; \
-                        mutex_p mut; \
-                        int status; \
-                        int endian; \
-                        int tag_id; \
-                        int64_t read_cache_expire; \
-                        int64_t read_cache_ms; \
-                        int size; \
-                        uint8_t *data
-
-struct plc_tag_dummy {
-    int tag_id;
-};
-
+/* This is needed for the generic functions */
 struct plc_tag_t {
-    TAG_BASE_STRUCT;
+	TAG_INTERNALS
 };
 
-#define PLC_TAG_P_NULL ((plc_tag_p)0)
+
+typedef plc_tag_p (*tag_create_function)(attr attributes);
 
 
-/* the following may need to be used where the tag is already mapped or is not yet mapped */
-extern int lib_init(void);
-extern void lib_teardown(void);
-extern int plc_tag_abort_mapped(plc_tag_p tag);
+/* useful functions */
 extern int plc_tag_destroy_mapped(plc_tag_p tag);
-extern int plc_tag_status_mapped(plc_tag_p tag);
+extern int plc_tag_abort_mapped(plc_tag_p tag);
 
 
 

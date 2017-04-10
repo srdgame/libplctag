@@ -21,9 +21,13 @@
 #ifndef __PLCTAG_UTIL_JOB_H__
 #define __PLCTAG_UTIL_JOB_H__
 
+#include <platform.h>
+#include <util/refcount.h>
+
+
 /* called by the library init function */
 extern int job_init();
-extern int job_teardown();
+extern void job_teardown();
 
 /*
  * job_create
@@ -34,10 +38,29 @@ extern int job_teardown();
  * 
  * Jobs MUST NOT BLOCK!   They are not at all preemptive.
  */
- 
-extern int job_create(const char *name, void *context, int (*job_func)(void *context, int terminate));
 
-#define JOB_STOP (0)
-#define JOB_CONTINUE (1)
+typedef struct job_t *job_p;
+ 
+struct job_t {
+	struct job_t *next;
+	const char *name;
+	void *context;
+	refcount rc;
+	int terminate;
+	int is_zombie;
+	int (*job_func)(job_p job, void *context);
+	void (*job_destructor)(void *context);
+}; 
+ 
+
+extern job_p job_create(const char *name, void *context, int (*job_func)(job_p job, void *context), void (*job_destructor)(void *context));
+extern void job_set_context(job_p job, void *context);
+extern int job_acquire(job_p job);
+extern int job_release(job_p job);
+
+#define JOB_STOP 		(0)
+#define JOB_CONTINUE 	(1)
+
+
 
 #endif

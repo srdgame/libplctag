@@ -151,7 +151,7 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    int tag = 0;
     int is_write = 0;
     uint32_t u_val;
     int32_t i_val;
@@ -267,7 +267,7 @@ int main(int argc, char **argv)
                         break;
 
                     case PLC_LIB_REAL32:
-                        printf("data[%d]=%f\n",i,plc_tag_get_float32(tag,index));
+                        printf("data[%d]=%f\n",i,plc_tag_get_float(tag,index));
                         index += 4;
                         break;
                 }
@@ -299,7 +299,7 @@ int main(int argc, char **argv)
                     break;
 
                 case PLC_LIB_REAL32:
-                    rc = plc_tag_set_float32(tag,0,f_val);
+                    rc = plc_tag_set_float(tag,0,f_val);
                     break;
             }
 

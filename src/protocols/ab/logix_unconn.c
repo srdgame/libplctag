@@ -18,26 +18,14 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#ifndef __PROTOCOL_SYSTEM_TAG_H__
-#define __PROTOCOL_SYSTEM_TAG_H__ 1
 
-#include <util/attr.h>
-#include <util/debug.h>
+#include <lib/libplctag.h>
 #include <platform.h>
 #include <lib/tag.h>
+#include <util/attr.h>
+#include <util/debug.h>
 
-#define MAX_SYSTEM_TAG_NAME (20)
-#define MAX_SYSTEM_TAG_SIZE (30)
-
-struct system_tag_t {
-	/* get the generic tag parts.   This must be first for the casting to work! */
-    TAG_INTERNALS
-
-    char name[MAX_SYSTEM_TAG_NAME];
-    uint8_t backing_data[MAX_SYSTEM_TAG_SIZE];
-};
-
-typedef struct system_tag_t *system_tag_p;
-
-
-#endif
+plc_tag_p ab_logix_unconn_create(attr attribs)
+{
+	return NULL;
+}
