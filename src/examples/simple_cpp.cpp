@@ -17,7 +17,7 @@
 
 int main()
 {
-    plc_tag tag = PLC_TAG_NULL;
+    int tag = 0;
     int rc;
     int i;
 
