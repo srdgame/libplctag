@@ -17,11 +17,18 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
+
+#ifndef __AB_SESSION_H__
+#define __AB_SESSION_H__
  
- #ifndef __AB_INIT_H__
- #define __AB_INIT_H__
- 
- 
- 
- #endif
- 
+
+#include <lib/libplctag.h>
+
+struct session_t {
+	
+};
+
+typedef struct session_t *session_p;
+
+
+#endif

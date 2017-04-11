@@ -180,6 +180,31 @@ extern attr attr_create_from_str(const char *attr_str)
 }
 
 
+/*
+ * attr_copy
+ * 
+ * Create a duplicate copy of a given set of attributes.
+ */
+
+attr attr_copy(attr source)
+{
+	attr attr_copy = attr_create();
+	attr_entry old_entry;
+	
+	if(!attr_copy) {
+		pdebug(DEBUG_ERROR, "Unable to allocate new attr struct!");
+		return NULL;
+	}
+	
+	old_entry = source->head;
+	
+	while(old_entry) {
+		attr_set_str(attr_copy, old_entry->name, old_entry->val);
+		old_entry = old_entry->next;
+	}
+	
+	return attr_copy;
+}
 
 
 

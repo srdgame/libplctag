@@ -17,11 +17,21 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
- 
- #ifndef __AB_INIT_H__
- #define __AB_INIT_H__
- 
- 
- 
- #endif
- 
+
+#ifndef __AB_TAG_H__
+#define __AB_TAG_H__
+
+#include <lib/libplctag.h>
+#include <lib/tag.h>
+#include <ab/session.h>
+
+struct ab_tag_t {
+	TAG_INTERNALS;
+	
+	session_p session;
+};
+
+
+typedef struct ab_tag_t *ab_tag_p;
+
+#endif

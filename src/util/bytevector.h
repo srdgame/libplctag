@@ -17,11 +17,27 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
- 
- #ifndef __AB_INIT_H__
- #define __AB_INIT_H__
- 
- 
- 
- #endif
- 
+
+
+#ifndef __UTIL_BYTEVECTOR_H__
+#define __UTIL_BYTEVECTOR_H__
+
+typedef struct byte_vector_t *byte_vector;
+
+extern byte_vector byte_vector_create(size_t capacity, size_t inc);
+extern void byte_vector_destroy(byte_vector vec);
+extern size_t byte_vector_size(byte_vector vec);
+extern size_t byte_vector_capacity(byte_vector vec);
+extern uint8_t *byte_vector_elements(byte_vector vec);
+extern size_t byte_vector_ensure_capacity(byte_vector vec, size_t new_size) 
+extern size_t byte_vector_splice(byte_vector vec, size_t loc, uint8_t *data, size_t data_len);
+extern size_t byte_vector_cut(byte_vector vec, size_t loc, size_t len);
+extern uint8_t byte_vector_get(byte_vector vec, size_t loc);
+extern size_t byte_vector_set(byte_vector vec, size_t loc, uint8_t val);
+extern size_t byte_vector_push(byte_vector vec, uint8_t val);
+extern size_t byte_vector_pop(byte_vector vec, uint8_t *val);
+extern size_t byte_vector_append(byte_vector vec, uint8_t val);
+extern size_t byte_vector_trunc(byte_vector vec, uint8_t *val);
+
+#endif
+

@@ -3,14 +3,14 @@
  *   Author Kyle Hayes  kylehayes@omantek.com                              *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU Library General Public License as       *
+ *   it under the terms of the GNU Lesser General Public License  as       *
  *   published by the Free Software Foundation; either version 2 of the    *
  *   License, or (at your option) any later version.                       *
  *                                                                         *
  *   This program is distributed in the hope that it will be useful,       *
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
+ *   GNU Lesser General Public License  for more details.                  *
  *                                                                         *
  *   You should have received a copy of the GNU Library General Public     *
  *   License along with this program; if not, write to the                 *
@@ -35,6 +35,7 @@ typedef struct attr_t *attr;
 attr_entry find_entry(attr a, const char *name);
 extern attr attr_create(void);
 extern attr attr_create_from_str(const char *attr_str);
+extern attr attr_copy(attr source);
 extern int attr_set_str(attr attrs, const char *name, const char *val);
 extern int attr_set_int(attr attrs, const char *name, int val);
 extern int attr_set_float(attr attrs, const char *name, float val);
