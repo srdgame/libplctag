@@ -20,13 +20,12 @@
 
 #include <stdlib.h>
 #include <lib/libplctag.h>
-#include <lib/libplctag_tag.h>
+#include <lib/tag.h>
 #include <platform.h>
 #include <util/attr.h>
 #include <util/debug.h>
-#include <util/pt.h>
-#include <ab/ab.h>
-#include <system/system.h>
+#include <ab/create.h>
+#include <system/create.h>
 #include <lib/init.h>
 
 
@@ -34,7 +33,7 @@
  * The version string.
  */
 
-const char *VERSION="2.0.4";
+const char *VERSION="2.0.7";
 
 
 
