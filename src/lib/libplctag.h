@@ -272,13 +272,11 @@ extern "C" {
     LIB_EXPORT int32_t plc_tag_get_int32(plc_tag tag, int offset);
     LIB_EXPORT int plc_tag_set_int32(plc_tag, int offset, int32_t val);
 
-
     LIB_EXPORT uint16_t plc_tag_get_uint16(plc_tag tag, int offset);
     LIB_EXPORT int plc_tag_set_uint16(plc_tag tag, int offset, uint16_t val);
 
     LIB_EXPORT int16_t plc_tag_get_int16(plc_tag tag, int offset);
     LIB_EXPORT int plc_tag_set_int16(plc_tag, int offset, int16_t val);
-
 
     LIB_EXPORT uint8_t plc_tag_get_uint8(plc_tag tag, int offset);
     LIB_EXPORT int plc_tag_set_uint8(plc_tag tag, int offset, uint8_t val);
