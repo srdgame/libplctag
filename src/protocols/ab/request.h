@@ -28,7 +28,7 @@
 #ifndef __PLCTAG_AB_REQUEST_H__
 #define __PLCTAG_AB_REQUEST_H__ 1
 
-#include <ab/ab_common.h>
+#include <ab/common.h>
 #include <util/refcount.h>
 
 

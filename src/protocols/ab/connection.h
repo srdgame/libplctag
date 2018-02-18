@@ -31,7 +31,7 @@
 
 
 #include <platform.h>
-#include <ab/ab_common.h>
+#include <ab/common.h>
 #include <util/attr.h>
 #include <util/refcount.h>
 #include <ab/session.h>

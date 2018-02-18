@@ -28,7 +28,7 @@
 #define __LIBPLCTAG_AB_CIP_H__
 
 #include <lib/libplctag.h>
-#include <ab/ab_common.h>
+#include <ab/common.h>
 
 
 int cip_encode_path(ab_tag_p tag, const char *path);

@@ -90,11 +90,6 @@ extern "C"
 
 
 
-/* memory functions/defs */
-extern void *mem_alloc(int size);
-extern void mem_free(const void *mem);
-extern void mem_set(void *d1, int c, int size);
-extern void mem_copy(void *d1, void *d2, int size);
 
 /* string functions/defs */
 extern int str_cmp(const char *first, const char *second);
@@ -142,14 +137,14 @@ for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(
 
 /* thread functions/defs */
 typedef struct thread_t *thread_p;
-//typedef PTHREAD_START_ROUTINE thread_func_t;
-//typedef DWORD /*WINAPI*/ (*thread_func_t)(void *lpParam );
 extern int thread_create(thread_p *t, LPTHREAD_START_ROUTINE func, int stacksize, void *arg);
 extern void thread_stop(void);
 extern int thread_join(thread_p t);
 extern int thread_destroy(thread_p *t);
 
 #define THREAD_LOCAL __declspec(thread)
+#define THREAD_FUNC(F) DWORD __stdcall F(LPVOID arg)
+#define THREAD_RETURN(val) return (DWORD)val
 
 /* atomic operations */
 typedef volatile long int lock_t;

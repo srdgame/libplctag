@@ -28,6 +28,7 @@
 #include <util/attr.h>
 #include <platform.h>
 #include <stdio.h>
+#include <util/mem.h>
 
 
 

@@ -35,8 +35,8 @@
 
 /* they are used in some of these includes */
 #include <lib/libplctag.h>
-#include <lib/libplctag_tag.h>
-#include <ab/ab_common.h>
+#include <lib/tag.h>
+#include <ab/common.h>
 #include <ab/session.h>
 #include <ab/connection.h>
 #include <ab/request.h>

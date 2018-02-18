@@ -24,13 +24,31 @@
 #include <limits.h>
 #include <float.h>
 #include <lib/libplctag.h>
-#include <lib/libplctag_tag.h>
-#include <lib/init.h>
+#include <lib/tag.h>
 #include <platform.h>
 #include <util/attr.h>
 #include <util/debug.h>
-#include <ab/ab.h>
+#include <util/hashtable.h>
+#include <ab/create.h>
 
+
+/* library visible data */
+const char *VERSION="2.0.5";
+const int VERSION_ARRAY[3] = {2,0,5};
+mutex_p global_library_mutex = NULL;
+
+/* local data. */
+static lock_t library_initialization_lock = LOCK_INIT;
+static volatile int library_initialized = 0;
+static volatile hashtable_p tags = NULL;
+static volatile int global_tag_id = 1;
+
+#define MAX_TAG_ID (1000000000)
+
+static int initialize_modules();
+static void destroy_modules();
+static int lib_init();
+static void lib_teardown();
 
 
 static plc_tag_p tag_id_to_tag_ptr(plc_tag tag_id);
@@ -39,12 +57,6 @@ static int release_tag_to_id_mapping(plc_tag_p tag);
 static int api_lock(int index);
 static int api_unlock(int index);
 static int tag_id_to_tag_index(plc_tag tag_id_ptr);
-
-
-
-mutex_p global_library_mutex = NULL;
-
-
 
 
 #define TAG_ID_MASK (0xFFFFFFF)
@@ -62,62 +74,6 @@ static volatile mutex_p tag_api_mutex[MAX_TAG_ENTRIES + 1] = {0,};
 
 #define api_block(tag_id)                                              \
 for(int __sync_flag_api_block_foo_##__LINE__ = 1; __sync_flag_api_block_foo_##__LINE__ ; __sync_flag_api_block_foo_##__LINE__ = 0, api_unlock(tag_id_to_tag_index(tag_id))) for(int __sync_rc_api_block_foo_##__LINE__ = api_lock(tag_id_to_tag_index(tag_id)); __sync_rc_api_block_foo_##__LINE__ == PLCTAG_STATUS_OK && __sync_flag_api_block_foo_##__LINE__ ; __sync_flag_api_block_foo_##__LINE__ = 0)
-
-
-
-/*
- * Initialize the library.  This is called in a threadsafe manner and
- * only called once.
- */
-
-int lib_init(void)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_INFO,"Setting up global library data.");
-
-    pdebug(DEBUG_INFO,"Initializing library global mutex.");
-
-    /* first see if the mutex is there. */
-    if (!global_library_mutex) {
-        rc = mutex_create((mutex_p*)&global_library_mutex);
-
-        if (rc != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
-        }
-    }
-
-    /* initialize the mutex for API protection */
-    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
-        rc = mutex_create((mutex_p*)&tag_api_mutex[i]);
-    }
-
-    pdebug(DEBUG_INFO,"Done.");
-
-    return rc;
-}
-
-void lib_teardown(void)
-{
-    pdebug(DEBUG_INFO,"Tearing down library.");
-
-    /* destroy the mutex for API protection */
-    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
-        mutex_destroy((mutex_p*)&tag_api_mutex[i]);
-        if(tag_map[i]) {
-            pdebug(DEBUG_WARN,"Tag %p at index %d was not destroyed!",tag_map[i],i);
-        }
-    }
-
-    pdebug(DEBUG_INFO,"Destroying global library mutex.");
-    if(global_library_mutex) {
-        mutex_destroy((mutex_p*)&global_library_mutex);
-    }
-
-
-    pdebug(DEBUG_INFO,"Done.");
-}
-
 
 
 /**************************************************************************
@@ -176,13 +132,13 @@ LIB_EXPORT const char* plc_tag_decode_error(int rc)
         case PLCTAG_ERR_NOT_FOUND: return "PLCTAG_ERR_NOT_FOUND"; break;
         case PLCTAG_ERR_ABORT: return "PLCTAG_ERR_ABORT"; break;
         case PLCTAG_ERR_WINSOCK: return "PLCTAG_ERR_WINSOCK"; break;
+        case PLCTAG_ERR_BUSY: return "PLCTAG_ERR_BUSY"; break;
 
         default: return "Unknown error."; break;
     }
 
     return "Unknown error.";
 }
-
 
 
 /*
@@ -198,7 +154,7 @@ LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
     attr attribs = NULL;
     int rc = PLCTAG_STATUS_OK;
     int read_cache_ms = 0;
-    tag_create_function tag_constructor;
+    const char *protocol = NULL;
 
     pdebug(DEBUG_INFO,"Starting");
 
@@ -219,124 +175,41 @@ LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
     /* set debug level */
     set_debug_level(attr_get_int(attribs, "debug", DEBUG_NONE));
 
-    /*
-     * create the tag, this is protocol specific.
-     *
-     * If this routine wants to keep the attributes around, it needs
-     * to clone them.
-     */
-    tag_constructor = find_tag_create_func(attribs);
-
-    if(!tag_constructor) {
-        pdebug(DEBUG_WARN,"Tag creation failed, no tag constructor found for tag type!");
-        attr_destroy(attribs);
-        return PLC_TAG_NULL;
-    }
-
-    tag = tag_constructor(attribs);
-
-    /*
-     * FIXME - this really should be here???  Maybe not?  But, this is
-     * the only place it can be without making every protocol type do this automatically.
-     */
-    if(!tag) {
-        pdebug(DEBUG_WARN, "Tag creation failed, skipping mutex creation and other generic setup.");
-        attr_destroy(attribs);
-        return PLC_TAG_NULL;
-    }
-
-    /* set up the read cache config. */
-    read_cache_ms = attr_get_int(attribs,"read_cache_ms",0);
-
-    if(read_cache_ms < 0) {
-        pdebug(DEBUG_WARN, "read_cache_ms value must be positive, using zero.");
-        read_cache_ms = 0;
-    }
-
-    tag->read_cache_expire = (uint64_t)0;
-    tag->read_cache_ms = (uint64_t)read_cache_ms;
-
-    /* create tag mutex */
-    rc = mutex_create(&tag->mut);
-
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to create tag mutex!");
-
-        /* this is fatal! */
-        attr_destroy(attribs);
-        plc_tag_destroy_mapped(tag);
-    }
-
-    /*
-     * Release memory for attributes
-     *
-     * some code is commented out that would have kept a pointer
-     * to the attributes in the tag and released the memory upon
-     * tag destruction. To prevent a memory leak without maintaining
-     * that pointer, the memory needs to be released here.
-     */
-    attr_destroy(attribs);
-
-    /* map the tag to a tag ID */
-    tag_id = allocate_new_tag_to_id_mapping(tag);
-
-    /* if the mapping failed, then punt */
-    if(tag_id == PLCTAG_ERR_OUT_OF_BOUNDS) {
-        pdebug(DEBUG_ERROR, "Unable to map tag %p to lookup table entry, rc=%d", tag_id);
-
-        /* need to destroy the tag because we allocated memory etc. */
-        plc_tag_destroy_mapped(tag);
-
-        return tag_id;
-    }
-
-    /*
-     * if there is a timeout, then loop until we get
-     * an error or we timeout.
-     */
-    if(timeout>0) {
-        int64_t timeout_time = timeout + time_ms();
-        rc = plc_tag_status_mapped(tag);
-
-        while(rc == PLCTAG_STATUS_PENDING && timeout_time > time_ms()) {
-            rc = plc_tag_status_mapped(tag);
-
-            /*
-             * terminate early and do not wait again if the
-             * async operations are done.
-             */
-            if(rc != PLCTAG_STATUS_PENDING) {
-                break;
-            }
-
-            sleep_ms(5); /* MAGIC */
-        }
-
-        /*
-         * if we dropped out of the while loop but the status is
-         * still pending, then we timed out.
-         *
-         * The create failed, so now we need to punt.
-         */
-        if(rc == PLCTAG_STATUS_PENDING) {
-            pdebug(DEBUG_WARN, "Create operation timed out.");
-            rc = PLCTAG_ERR_TIMEOUT;
-        }
+    /* determine which protocol to use. */
+    protocol = attr_get_str(attribs, "protocol", "NONE");
+    if(str_cmp_i(protocol,"ab_eip") == 0 || str_cmp_i(protocol,"ab-eip") == 0) {
+        /* some AB PLC. */
+        rc = ab_create_tag(attribs, &tag);
+    } else if(str_cmp_i(protocol,"system") == 0) {
+        rc = system_create_tag(attribs, &tag);
     } else {
-        /* not waiting and no errors yet, so carry on. */
-        rc = PLCTAG_STATUS_OK;
+        pdebug(DEBUG_WARN, "Unsupported protocol %s!", protocol);
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
     }
-
-    /* if everything did not go OK, then close the tag. */
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN,"Tag creation failed.");
-        plc_tag_destroy_mapped(tag);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN, "Error creating tag!");
         return rc;
     }
+    
+    /* this selects a tag ID and adds the tag to the lookup table. */
+    rc = add_tag_to_lookup(tag);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN, "Error attempting to add the new tag to the lookup table!");
+        return rc;
+    }
+    
+    if(timeout > 0) {
+        int64_t max_time = time_ms() + timeout;
+        
+        while(max_time < time_ms() && tag->vtable->status(tag) == PLCTAG_STATUS_PENDING) {
+            sleep_ms(1);
+        }
+    }
 
-    pdebug(DEBUG_INFO, "Returning mapped tag %d", tag_id);
-
-    return tag_id;
+    pdebug(DEBUG_INFO, "Done.");
+    
+    return tag->tag_id;
 }
 
 
@@ -1494,6 +1367,216 @@ LIB_EXPORT int plc_tag_set_float32(plc_tag tag_id, int offset, float fval)
 
     return rc;
 }
+
+
+
+
+
+/*****************************************************************************************************
+ ****************************  Helper functions for generic internal use *****************************
+ ****************************************************************************************************/
+
+
+
+
+/*
+ * plc_tag_init()
+ *
+ * Set up the generic parts of the tag.
+ */
+
+int plc_tag_init(plc_tag_p tag, attr attribs, tag_vtable_p vtable)
+{
+    plc_tag tag_id = PLCTAG_ERR_OUT_OF_BOUNDS;
+    int rc = PLCTAG_STATUS_OK;
+    int read_cache_ms = 0;
+
+    pdebug(DEBUG_INFO,"Starting");
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Called with null tag pointer!");
+        return PLCTAG_ERR_NULL_PTR;
+    }
+    
+    tag->vtable = vtable;
+
+    /* set up the read cache config. */
+    read_cache_ms = attr_get_int(attribs,"read_cache_ms",0);
+    if(read_cache_ms < 0) {
+        pdebug(DEBUG_WARN, "read_cache_ms value must be positive, using zero.");
+        read_cache_ms = 0;
+    }
+
+    tag->read_cache_expire = (uint64_t)0;
+    tag->read_cache_ms = (uint64_t)read_cache_ms;
+
+    /* create tag mutex */
+    rc = mutex_create(&tag->api_mutex);
+
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_ERROR, "Unable to create tag mutex!");
+        
+        return rc;
+    }
+
+    pdebug(DEBUG_INFO, "Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+/*
+ * plc_tag_deinit()
+ *
+ * Tear down the generic parts of the tag.
+ * 
+ * This should be called from the protocol's tag destructor.
+ */
+
+int plc_tag_deinit(plc_tag_p tag)
+{
+    int rc = PLCTAG_STATUS_OK;
+    
+    pdebug(DEBUG_INFO,"Starting");
+
+    /* destroy tag mutex */
+    rc = mutex_destroy(&tag->api_mutex);
+
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_ERROR, "Unable to destroy tag mutex!");
+        
+        return rc;
+    }
+
+    pdebug(DEBUG_INFO, "Done.");
+
+    return rc;
+}
+
+
+
+
+/*****************************************************************************************************
+ *********************************  Library set up/tear down routines ********************************
+ ****************************************************************************************************/
+
+
+int initialize_modules(void)
+{
+    int rc = PLCTAG_STATUS_OK;
+
+    /* loop until we get the lock flag */
+    while (!lock_acquire((lock_t*)&library_initialization_lock)) {
+        sleep_ms(1);
+    }
+
+    if(!library_initialized) {
+        pdebug(DEBUG_INFO,"Initializing library modules.");
+        rc = lib_init();
+
+        if(rc == PLCTAG_STATUS_OK) {
+            rc = job_init();
+        } else {
+            pdebug(DEBUG_ERROR,"Job utility failed to initialize correctly!");
+            return rc;
+        }
+
+        if(rc == PLCTAG_STATUS_OK) {
+            rc = ab_init();
+        } else {
+            pdebug(DEBUG_ERROR,"AB protocol failed to initialize correctly!");
+            return rc;
+        }
+
+        library_initialized = 1;
+
+        /* hook the destructor */
+        atexit(destroy_modules);
+
+        pdebug(DEBUG_INFO,"Done initializing library modules.");
+    }
+
+    /* we hold the lock, so clear it.*/
+    lock_release((lock_t*)&library_initialization_lock);
+
+    return rc;
+}
+
+
+
+
+void destroy_modules(void)
+{
+    ab_teardown();
+
+    pt_teardown();
+
+    lib_teardown();
+}
+
+
+
+
+/*
+ * Initialize the library.  This is called in a threadsafe manner and
+ * only called once.
+ */
+
+int lib_init(void)
+{
+    int rc = PLCTAG_STATUS_OK;
+
+    pdebug(DEBUG_INFO,"Setting up global library data.");
+
+    pdebug(DEBUG_INFO,"Initializing library global mutex.");
+
+    /* first see if the mutex is there. */
+    if (!global_library_mutex) {
+        rc = mutex_create((mutex_p*)&global_library_mutex);
+
+        if (rc != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
+        }
+    }
+
+    /* initialize the mutex for API protection */
+    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
+        rc = mutex_create((mutex_p*)&tag_api_mutex[i]);
+    }
+
+    pdebug(DEBUG_INFO,"Done.");
+
+    return rc;
+}
+
+void lib_teardown(void)
+{
+    pdebug(DEBUG_INFO,"Tearing down library.");
+
+    /* destroy the mutex for API protection */
+    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
+        mutex_destroy((mutex_p*)&tag_api_mutex[i]);
+        if(tag_map[i]) {
+            pdebug(DEBUG_WARN,"Tag %p at index %d was not destroyed!",tag_map[i],i);
+        }
+    }
+
+    pdebug(DEBUG_INFO,"Destroying global library mutex.");
+    if(global_library_mutex) {
+        mutex_destroy((mutex_p*)&global_library_mutex);
+    }
+
+
+    pdebug(DEBUG_INFO,"Done.");
+}
+
+
+
 
 
 

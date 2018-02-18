@@ -27,7 +27,7 @@
 #ifndef __LIBPLCTAG_AB_EIP_DHP_PCCC_H__
 #define __LIBPLCTAG_AB_EIP_DHP_PCCC_H__
 
-#include <ab/ab_common.h>
+#include <ab/common.h>
 
 /* PCCC with DH+ last hop */
 int eip_dhp_pccc_tag_status(ab_tag_p tag);

@@ -46,21 +46,31 @@ typedef struct plc_tag_t *plc_tag_p;
 
 
 /* define tag operation functions */
-typedef int (*tag_abort_func)(plc_tag_p tag);
-typedef int (*tag_destroy_func)(plc_tag_p tag);
-typedef int (*tag_read_func)(plc_tag_p tag);
-typedef int (*tag_status_func)(plc_tag_p tag);
-typedef int (*tag_write_func)(plc_tag_p tag);
+//typedef int (*tag_abort_func)(plc_tag_p tag);
+//typedef int (*tag_destroy_func)(plc_tag_p tag);
+//typedef int (*tag_read_func)(plc_tag_p tag);
+//typedef int (*tag_status_func)(plc_tag_p tag);
+//typedef int (*tag_write_func)(plc_tag_p tag);
 
 typedef int (*tag_vtable_func)(plc_tag_p tag);
+typedef int (*tag_get_int_func)(plc_tag_p tag, int offset, int size, int64_t *val);
+typedef int (*tag_set_int_func)(plc_tag_p tag, int offset, int size, int64_t val);
+typedef int (*tag_get_float_func)(plc_tag_p tag, int offset, int size, double *val);
+typedef int (*tag_set_float_func)(plc_tag_p tag, int offset, int size, double val);
+
+
 
 /* we'll need to set these per protocol type. */
 struct tag_vtable_t {
     tag_vtable_func abort;
-    tag_vtable_func destroy;
     tag_vtable_func read;
-    tag_vtable_func status;
     tag_vtable_func write;
+    tag_get_int_func get_int;
+    tag_set_int_func set_int;
+    tag_get_float_func get_float;
+    tag_set_float_func set_float;
+    tag_vtable_func get_status;
+    tag_vtable_func get_size;
 };
 
 typedef struct tag_vtable_t *tag_vtable_p;
@@ -74,14 +84,11 @@ typedef struct tag_vtable_t *tag_vtable_p;
  */
 
 #define TAG_BASE_STRUCT tag_vtable_p vtable; \
-                        mutex_p mut; \
+                        mutex_p api_mutex; \
                         int status; \
-                        int endian; \
                         int tag_id; \
                         int64_t read_cache_expire; \
-                        int64_t read_cache_ms; \
-                        int size; \
-                        uint8_t *data
+                        int64_t read_cache_ms
 
 struct plc_tag_dummy {
     int tag_id;
@@ -95,12 +102,17 @@ struct plc_tag_t {
 
 
 /* the following may need to be used where the tag is already mapped or is not yet mapped */
-extern int lib_init(void);
-extern void lib_teardown(void);
-extern int plc_tag_abort_mapped(plc_tag_p tag);
-extern int plc_tag_destroy_mapped(plc_tag_p tag);
-extern int plc_tag_status_mapped(plc_tag_p tag);
+//extern int lib_init(void);
+//extern void lib_teardown(void);
+//extern int plc_tag_abort_mapped(plc_tag_p tag);
+//extern int plc_tag_destroy_mapped(plc_tag_p tag);
+//extern int plc_tag_status_mapped(plc_tag_p tag);
 
+/*
+ * Set up the generic parts of a tag.
+ */
+extern int plc_tag_init(plc_tag_p tag, tag_vtable_p vtable);
+extern int plc_tag_deinit(plc_tag_p tag);
 
 
 #endif

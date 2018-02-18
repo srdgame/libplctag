@@ -30,7 +30,7 @@
 #include <stdio.h>
 #include <lib/libplctag.h>
 #include <platform.h>
-#include <ab/ab_common.h>
+#include <ab/common.h>
 #include <ab/cip.h>
 #include <ab/tag.h>
 #include <ab/eip.h>

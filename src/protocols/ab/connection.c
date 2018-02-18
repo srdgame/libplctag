@@ -38,12 +38,12 @@ extern "C"
 #include <errno.h>
 #include <platform.h>
 #include <lib/libplctag.h>
-#include <lib/libplctag_tag.h>
+#include <lib/tag.h>
 #include <ab/connection.h>
 #include <ab/session.h>
 #include <ab/tag.h>
 #include <ab/eip.h>
-#include <ab/ab.h>
+#include <ab/create.h>
 #include <util/attr.h>
 #include <util/debug.h>
 
@@ -424,10 +424,14 @@ int recv_forward_open_resp(ab_connection_p connection, ab_request_p req)
 
 
 
-void connection_cleanup(void *connection_arg)
+void connection_cleanup(void *connection_arg, void *arg1, void *arg2)
 {
     ab_connection_p connection = connection_arg;
     int really_destroy = 1;
+    
+    /* arg1, and arg2 are not used. */
+    (void) arg1;
+    (void) arg2;
 
     pdebug(DEBUG_INFO, "Starting.");
 

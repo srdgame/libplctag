@@ -1,9 +1,9 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2017 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU Library General Public License as       *
+ *   it under the terms of the GNU Library/Lesser General Public License as*
  *   published by the Free Software Foundation; either version 2 of the    *
  *   License, or (at your option) any later version.                       *
  *                                                                         *
@@ -18,21 +18,21 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#ifndef __UTIL_HASH_H__
+#define __UTIL_HASH_H__
 
-#ifndef __UTIL__REFCOUNT_H__
-#define __UTIL__REFCOUNT_H__ 1
+/*
+ * This comes from Bob Jenkins's excellent site:
+ *    http://burtleburtle.net/bob/c/lookup2.c
+ * Thanks, Bob!
+ *
+ * Note that I am intentionally using lookup2.c not the newer lookup3.c
+ * because of the byte order handling in lookup3.c.   I just cannot
+ * convince myself that it is going to be correct on all platforms.
+ */
 
-#include <platform.h>
-#include <util/callback.h>
+#include <stdint.h>
 
-extern void *rc_alloc2(int size, callback_func_t cleanup_func, void *arg1, void *arg2);
-extern void *rc_alloc1(int size, callback_func_t cleanup_func, void *arg1);
-extern void *rc_alloc(int size, callback_func_t cleanup_func);
-extern void *rc_inc(void *data);
-extern void *rc_dec(void *data);
-extern int rc_add_cleanup(void *data, callback_func_t cleanup_func, void *arg1, void *arg2);
-//extern void rc_free(const void *data);
-//extern int rc_count(const void *data);
-
+extern uint32_t hash(uint8_t *k, size_t length, uint32_t initval);
 
 #endif

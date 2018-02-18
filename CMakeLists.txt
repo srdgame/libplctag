@@ -116,14 +116,42 @@ MESSAGE("BASE_C_FLAGS=${BASE_C_FLAGS}")
 MESSAGE("BASE_CXX_FLAGS=${BASE_CXX_FLAGS}")
 
 # set up the library sources
-set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
-                     "${lib_SRC_PATH}/init.h"
+set ( libplctag_SRCS 
+                     "${util_SRC_PATH}/attr.c"
+                     "${util_SRC_PATH}/attr.h"
+                     "${util_SRC_PATH}/callback.h"
+                     "${util_SRC_PATH}/debug.c"
+                     "${util_SRC_PATH}/debug.h"
+                     "${util_SRC_PATH}/hash.c"
+                     "${util_SRC_PATH}/hash.h"
+                     "${util_SRC_PATH}/hashtable.c"
+                     "${util_SRC_PATH}/hashtable.h"
+                     "${util_SRC_PATH}/job.c"
+                     "${util_SRC_PATH}/job.h"
+                     "${util_SRC_PATH}/macros.h"
+                     "${util_SRC_PATH}/mem.c"
+                     "${util_SRC_PATH}/mem.h"
+                     "${util_SRC_PATH}/refcount.c"
+                     "${util_SRC_PATH}/refcount.h"
+                     "${util_SRC_PATH}/resource.c"
+                     "${util_SRC_PATH}/resource.h"
+                     "${util_SRC_PATH}/vector.c"
+                     "${util_SRC_PATH}/vector.h"
+
+                     "${platform_SRC_PATH}/platform.c"
+                     "${platform_SRC_PATH}/platform.h" 
+
                      "${lib_SRC_PATH}/libplctag.h"
-                     "${lib_SRC_PATH}/libplctag_tag.c"
-                     "${lib_SRC_PATH}/libplctag_tag.h"
-                     "${ab_SRC_PATH}/ab.h"
-                     "${ab_SRC_PATH}/ab_common.c"
-                     "${ab_SRC_PATH}/ab_common.h"
+                     "${lib_SRC_PATH}/tag.c"
+                     "${lib_SRC_PATH}/tag.h"
+
+                     "${protocol_SRC_PATH}/system/system.c"
+                     "${protocol_SRC_PATH}/system/create.h"
+                     "${protocol_SRC_PATH}/system/tag.h"
+                     
+                     "${ab_SRC_PATH}/create.h"
+                     "${ab_SRC_PATH}/common.c"
+                     "${ab_SRC_PATH}/common.h"
                      "${ab_SRC_PATH}/cip.c"
                      "${ab_SRC_PATH}/cip.h"
                      "${ab_SRC_PATH}/connection.c"
@@ -144,21 +172,7 @@ set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
                      "${ab_SRC_PATH}/request.h"
                      "${ab_SRC_PATH}/session.c"
                      "${ab_SRC_PATH}/session.h"
-                     "${ab_SRC_PATH}/tag.h"
-                     "${protocol_SRC_PATH}/system/system.c"
-                     "${protocol_SRC_PATH}/system/system.h"
-                     "${protocol_SRC_PATH}/system/tag.h"
-                     "${util_SRC_PATH}/attr.c"
-                     "${util_SRC_PATH}/attr.h"
-                     "${util_SRC_PATH}/debug.c"
-                     "${util_SRC_PATH}/debug.h"
-                     "${util_SRC_PATH}/macros.h"
-                     "${util_SRC_PATH}/pt.c"
-                     "${util_SRC_PATH}/pt.h"
-                     "${util_SRC_PATH}/refcount.c"
-                     "${util_SRC_PATH}/refcount.h"
-                     "${platform_SRC_PATH}/platform.c"
-                     "${platform_SRC_PATH}/platform.h" )
+                     "${ab_SRC_PATH}/tag.h" )
 
 # set the compiler flags
 FOREACH( lib_src ${libplctag_SRCS} )

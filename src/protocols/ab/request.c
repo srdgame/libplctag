@@ -26,14 +26,14 @@
  **************************************************************************/
 
 
-#include <ab/ab_common.h>
+#include <ab/common.h>
 #include <ab/request.h>
 #include <platform.h>
 #include <ab/session.h>
 #include <util/debug.h>
 #include <util/refcount.h>
 
-void request_cleanup(void *request_arg);
+void request_cleanup(void *request_arg, void *arg1, void *arg2);
 
 /*
  * request_create
@@ -64,30 +64,6 @@ int request_create(ab_request_p* req)
     return rc;
 }
 
-/*
-int request_acquire(ab_request_p req)
-{
-    if(!req) {
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    pdebug(DEBUG_INFO,"Acquiring request.");
-
-    return refcount_acquire(&req->rc);
-}
-
-
-int request_release(ab_request_p req)
-{
-    if(!req) {
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    pdebug(DEBUG_INFO,"Releasing request.");
-
-    return refcount_release(&req->rc);
-}
-*/
 
 /*
  * request_cleanup
@@ -95,16 +71,14 @@ int request_release(ab_request_p req)
  * The request must be removed from any lists before this!
  */
 
-void request_cleanup(void *req_arg)
+void request_cleanup(void *req_arg, void *arg1, void *arg2)
 {
-    ab_request_p r = req_arg;
+    (void) req_arg;
+    (void) arg1;
+    (void) arg2;
 
     pdebug(DEBUG_DETAIL, "Starting.");
-
-    if(r) {
-        rc_free(r);
-    }
-
+    
     pdebug(DEBUG_DETAIL, "Done.");
 }
 

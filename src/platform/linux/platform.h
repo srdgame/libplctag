@@ -43,12 +43,6 @@
 
 
 
-/* memory functions/defs */
-extern void *mem_alloc(int size);
-extern void mem_free(const void *mem);
-extern void mem_set(void *d1, int c, int size);
-extern void mem_copy(void *d1, void *d2, int size);
-
 /* string functions/defs */
 extern int str_cmp(const char *first, const char *second);
 extern int str_cmp_i(const char *first, const char *second);
@@ -87,8 +81,13 @@ extern int mutex_destroy(mutex_p *m);
  * unlock the mutex.  It will NOT break out of any surrounding loop outside the
  * synchronized block.
  */
+ 
+#define PLCTAG_CAT2(a,b) a##b
+#define PLCTAG_CAT(a,b) PLCTAG_CAT2(a,b)
+#define LINE_ID(base) PLCTAG_CAT(base,__LINE__)
+
 #define critical_block(lock) \
-for(int __sync_flag_nargle_##__LINE__ = 1; __sync_flag_nargle_##__LINE__ ; __sync_flag_nargle_##__LINE__ = 0, mutex_unlock(lock))  for(int __sync_rc_nargle_##__LINE__ = mutex_lock(lock); __sync_rc_nargle_##__LINE__ == PLCTAG_STATUS_OK && __sync_flag_nargle_##__LINE__ ; __sync_flag_nargle_##__LINE__ = 0)
+for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, mutex_unlock(lock))  for(int LINE_ID(__sync_rc_nargle_) = mutex_lock(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
 
 /* thread functions/defs */
 typedef struct thread_t *thread_p;
@@ -99,6 +98,9 @@ extern int thread_join(thread_p t);
 extern int thread_destroy(thread_p *t);
 
 #define THREAD_LOCAL __thread
+#define THREAD_FUNC(F) void* F(void* arg)
+#define THREAD_RETURN(val) return (void *)val
+
 
 /* atomic operations */
 typedef int lock_t;

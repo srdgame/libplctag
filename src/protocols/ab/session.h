@@ -28,7 +28,7 @@
 #ifndef __PLCTAG_AB_SESSION_H__
 #define __PLCTAG_AB_SESSION_H__ 1
 
-#include <ab/ab_common.h>
+#include <ab/common.h>
 #include <ab/request.h>
 #include <util/refcount.h>
 

@@ -28,7 +28,7 @@
 #ifndef __LIBPLCTAG_AB_EIP_CIP_H__
 #define __LIBPLCTAG_AB_EIP_CIP_H__
 
-#include <ab/ab_common.h>
+#include <ab/common.h>
 
 int eip_cip_tag_status(ab_tag_p tag);
 int eip_cip_tag_read_start(ab_tag_p tag);

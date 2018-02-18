@@ -117,6 +117,33 @@ extern void mem_copy(void *d1, void *d2, int size)
 
 
 
+/*
+ * mem_move
+ *
+ * move memory from one pointer to another for the passed number of bytes.
+ */
+extern void mem_move(void *dest, void *src, int size)
+{
+    memmove(dest, src, size);
+}
+
+
+
+
+
+int mem_cmp(void *src1, int src1_size, void *src2, int src2_size)
+{
+    /* short circuit the comparison if the blocks are different lengths */
+    if(src1_size != src2_size) {
+        return (src1_size - src2_size);
+    }
+
+    return memcmp(src1, src2, src1_size);
+}
+
+
+
+
 
 /***************************************************************************
  ******************************* Strings ***********************************

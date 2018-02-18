@@ -1,9 +1,9 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2017 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU Library General Public License as       *
+ *   it under the terms of the GNU Lesser General Public License as        *
  *   published by the Free Software Foundation; either version 2 of the    *
  *   License, or (at your option) any later version.                       *
  *                                                                         *
@@ -18,21 +18,23 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#ifndef __UTIL_RESOURCE_H__
+#define __UTIL_RESOURCE_H__ 1
 
-#ifndef __UTIL__REFCOUNT_H__
-#define __UTIL__REFCOUNT_H__ 1
+#include <util/macros.h>
+#include <util/refcount.h>
 
-#include <platform.h>
-#include <util/callback.h>
+extern void *resource_get(const char *name);
+extern int resource_put(const char *name, void *resource);
+extern int resource_remove(const char *name);
 
-extern void *rc_alloc2(int size, callback_func_t cleanup_func, void *arg1, void *arg2);
-extern void *rc_alloc1(int size, callback_func_t cleanup_func, void *arg1);
-extern void *rc_alloc(int size, callback_func_t cleanup_func);
-extern void *rc_inc(void *data);
-extern void *rc_dec(void *data);
-extern int rc_add_cleanup(void *data, callback_func_t cleanup_func, void *arg1, void *arg2);
-//extern void rc_free(const void *data);
-//extern int rc_count(const void *data);
+#define resource_make_name(...) resource_make_name_impl(COUNT_NARG(__VA_ARGS__), __VA_ARGS__)
+extern char *resource_make_name_impl(int num_args, ...);
+
+
+extern int resource_service_init(void);
+extern void resource_service_teardown(void);
+
 
 
 #endif

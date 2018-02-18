@@ -1,9 +1,9 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2017 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU Library General Public License as       *
+ *   it under the terms of the GNU Library/Lesser General Public License as*
  *   published by the Free Software Foundation; either version 2 of the    *
  *   License, or (at your option) any later version.                       *
  *                                                                         *
@@ -18,17 +18,20 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#ifndef __LIB_INIT_H__
-#define __LIB_INIT_H__ 1
+#ifndef __UTIL_VECTOR_H__
+#define __UTIL_VECTOR_H__ 1
 
 
-#include <util/attr.h>
+typedef struct vector_t *vector_p;
 
-extern int initialize_modules(void);
+extern vector_p vector_create(int capacity, int max_inc);
+extern int vector_length(vector_p vec);
+extern int vector_put(vector_p vec, int index, void * ref);
+extern void *vector_get(vector_p vec, int index);
+extern int vector_on_each(vector_p vec, int (*callback_func)(vector_p vec, int index, void **data, int arg_count, void **args), int num_args, ...);
+extern void *vector_remove(vector_p vec, int index);
+extern int vector_destroy(vector_p vec);
 
-typedef plc_tag_p (*tag_create_function)(attr attributes);
-extern tag_create_function find_tag_create_func(attr attributes);
 
-extern const char *VERSION;
 
 #endif
