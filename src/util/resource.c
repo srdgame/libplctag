@@ -30,7 +30,7 @@ static volatile hashtable_p resource_by_name = NULL;
 static volatile mutex_p resource_mutex = NULL;
 
 
-static void resource_data_cleanup(void *rsrc_arg, int arg_count, void **args);
+static int resource_data_cleanup(void *resource_arg, void *name_arg, void *arg3);
 
 
 
@@ -73,7 +73,7 @@ int resource_put(const char *name, void * resource)
 {
     int name_len = 0;
     int rc = PLCTAG_STATUS_OK;
-    const char *dup_name;
+    char *dup_name;
 
     if(!name) {
         pdebug(DEBUG_WARN,"Called with null name!");
@@ -91,7 +91,7 @@ int resource_put(const char *name, void * resource)
     }
 
     /* set up clean up function on resource. */
-    rc = rc_register_cleanup(resource, resource_data_cleanup, dup_name);
+    rc = rc_add_cleanup(resource, resource_data_cleanup, dup_name, NULL);
     if(rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_WARN,"Unable to add cleanup function to resource!");
         mem_free(dup_name);
@@ -157,28 +157,26 @@ char *resource_make_name_impl(int num_args, ...)
 
 
 
-void resource_data_cleanup(void *resource_arg, int extra_arg_count, void **extra_args)
+int resource_data_cleanup(void *resource_arg, void *name_arg, void *arg3)
 {
-    char *name = NULL;
-    void *resource = NULL;
+    void *resource = resource_arg;
+    char *name = name_arg;
+    
+    (void)arg3;
 
-    if(extra_arg_count < 1 || !extra_args) {
-        pdebug(DEBUG_WARN,"Not enough arguments or null argument array!");
-        return;
+    if(!resource) {
+        pdebug(DEBUG_WARN, "Null resource argument!");
+        
+        if(name) {
+            mem_free(name);
+        }
+        
+        return PLCTAG_ERR_NULL_PTR;
     }
-
-    resource = resource_arg;
-    name = extra_args[0];
 
     if(!name) {
         pdebug(DEBUG_WARN,"Resource name pointer is null!");
-        return;
-    }
-
-    if(!resource) {
-        pdebug(DEBUG_WARN, "Null argument!");
-        mem_free(name);
-        return;
+        return PLCTAG_ERR_NULL_PTR;
     }
 
     critical_block(resource_mutex) {

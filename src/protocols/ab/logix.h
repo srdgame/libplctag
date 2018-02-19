@@ -1,6 +1,6 @@
 /***************************************************************************
- *   Copyright (C) 2015 by OmanTek                                         *
- *   Author Kyle Hayes  kylehayes@omantek.com                              *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
+ *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -18,20 +18,16 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-/**************************************************************************
- * CHANGE LOG                                                             *
- *                                                                        *
- * 2013-11-19  KRH - Created file.                                        *
- **************************************************************************/
 
 
-#ifndef __LIBPLCTAG_AB_EIP_CIP_H__
-#define __LIBPLCTAG_AB_EIP_CIP_H__
+#pragma once
 
-#include <ab/common.h>
+#include <lib/tag.h>
+#include <util/attr.h>
 
-int eip_cip_tag_status(ab_tag_p tag);
-int eip_cip_tag_read_start(ab_tag_p tag);
-int eip_cip_tag_write_start(ab_tag_p tag);
+extern int logix_tag_create(attr attribs, plc_tag_p *ptag);
 
-#endif
+//int eip_cip_tag_status(ab_tag_p tag);
+//int eip_cip_tag_read_start(ab_tag_p tag);
+//int eip_cip_tag_write_start(ab_tag_p tag);
+//

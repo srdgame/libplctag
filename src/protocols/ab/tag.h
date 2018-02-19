@@ -25,13 +25,12 @@
  *                                                                        *
  **************************************************************************/
 
-#ifndef __PLCTAG_AB_TAG_H__
-#define __PLCTAG_AB_TAG_H__ 1
+#pragma once
 
 /* do these first */
-#define MAX_TAG_NAME        (64)
+#define MAX_TAG_NAME        (256)
 #define MAX_TAG_TYPE_INFO   (64)
-#define MAX_CONN_PATH       (128)
+#define MAX_CONN_PATH       (256)
 
 /* they are used in some of these includes */
 #include <lib/libplctag.h>
@@ -97,7 +96,3 @@ struct ab_tag_t {
     /*int connect_in_progress;*/
 };
 
-
-
-
-#endif

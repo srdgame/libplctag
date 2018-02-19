@@ -37,33 +37,184 @@
 #include <platform.h>
 #include <lib/libplctag.h>
 #include <lib/tag.h>
-#include <ab/eip.h>
-#include <ab/common.h>
-#include <ab/cip.h>
-#include <ab/tag.h>
+//#include <ab/eip.h>
+//#include <ab/common.h>
+//#include <ab/cip.h>
+//#include <ab/tag.h>
 #include <ab/session.h>
-#include <ab/eip_cip.h>
+//#include <ab/eip_cip.h>
 #include <ab/error_codes.h>
 #include <util/attr.h>
 #include <util/debug.h>
 
 
-int allocate_request_slot(ab_tag_p tag);
-int allocate_read_request_slot(ab_tag_p tag);
-int allocate_write_request_slot(ab_tag_p tag);
-int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset);
-int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset);
-int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset);
-int build_write_request_unconnected(ab_tag_p tag, int slot, int byte_offset);
-static int check_read_status_connected(ab_tag_p tag);
-static int check_read_status_unconnected(ab_tag_p tag);
-static int check_write_status_connected(ab_tag_p tag);
-static int check_write_status_unconnected(ab_tag_p tag);
-int calculate_write_sizes(ab_tag_p tag);
+//int allocate_request_slot(ab_tag_p tag);
+//int allocate_read_request_slot(ab_tag_p tag);
+//int allocate_write_request_slot(ab_tag_p tag);
+//int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset);
+//int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset);
+//int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset);
+//int build_write_request_unconnected(ab_tag_p tag, int slot, int byte_offset);
+//static int check_read_status_connected(ab_tag_p tag);
+//static int check_read_status_unconnected(ab_tag_p tag);
+//static int check_write_status_connected(ab_tag_p tag);
+//static int check_write_status_unconnected(ab_tag_p tag);
+//int calculate_write_sizes(ab_tag_p tag);
+
+
+
+struct logix_tag_t {
+    TAG_BASE_STRUCT;
+    
+    const char *name;
+    session_p session;
+    int elem_size;
+    int elem_count;
+    uint8_t *data;
+};
+
+typedef struct logix_tag_t *logix_tag_p;
+
+
+static int tag_destroy(void *tag_arg, void *arg2, void *arg3);
+
+static int tag_abort(plc_tag_p tag);
+static int tag_read(plc_tag_p tag);
+static int tag_write(plc_tag_p tag);
+static int tag_get_int(plc_tag_p tag, int offset, int size, int64_t *val);
+static int tag_set_int(plc_tag_p tag, int offset, int size, int64_t val);
+static int tag_get_float(plc_tag_p tag, int offset, int size, double *val);
+static int tag_set_float(plc_tag_p tag, int offset, int size, double *val);
+static int tag_status(plc_tag_p tag);
+static int tag_size(plc_tag_p tag);
+
+
+static tag_vtable_p logix_vtable = {tag_abort, tag_read, tag_write, tag_get_int, tag_set_int, tag_get_float, tag_set_float, tag_status, tag_size};
+
+
+int logix_tag_create(attr attribs, plc_tag_p *ptag)
+{
+    int rc = PLCTAG_STATUS_OK;
+    const char *path = attr_get_str(attribs, "path", NULL);
+    const char *name = attr_get_str(attribs, "name", NULL);
+    int elem_count = attr_get_int(attribs, "elem_count", 1);
+    int elem_size = attr_get_int(attribs, "elem_size", 0);
+    logix_tag_p tag = NULL;
+    
+    if(!path || str_length(path) == 0) {
+        pdebug(DEBUG_WARN,"Tag path is missing or zero length!");
+        *ptag = NULL;
+        return PLCTAG_ERR_BAD_GATEWAY;
+    }
+    
+    if(!name || str_length(name) == 0) {
+        pdebug(DEBUG_WARN,"Tag name is missing or zero length!");
+        *ptag = NULL;
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+    
+    if(elem_size <= 0) {
+        pdebug(DEBUG_WARN, "Tag element size is missing or zero!");
+        *ptag = NULL;
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+
+    /* we have enough data to make the tag now.   Allocate it all at once. */
+    tag = (logix_tag_p)rc_alloc((sizeof(*tag) + (elem_size * elem_count)), tag_destroy);
+    if(!tag) {
+        pdebug(DEBUG_ERROR, "Unable to allocate tag memory!");
+        *ptag = NULL;
+        return PLCTAG_ERR_NO_MEM;
+    }
+    
+    /* initialize the base tag */
+    rc = plc_tag_init((plc_tag_p)tag, attribs, &logix_vtable);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN,"Base tag initialization failed!");
+        *ptag = NULL;
+        rc_dec(tag);
+        return rc;
+    }
+    
+    
+    /* encode the name as a test. */
+    rc = cip_encode_tag_name(NULL, NULL, name);
+    
+    /* get the tag session */
+    rc = session_get(path, &tag->session);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN,"Unable to get session!");
+        *ptag = NULL;
+        rc_dec(tag);
+        return rc;        
+    }
+    
+    /* everything worked so far, return the tag */
+    *ptag = (plc_tag_p)tag;
+    
+    return rc;
+}
+
+
+
+
+
+/*************************************************************************
+ *************************** VTable Functions ****************************
+ ************************************************************************/
+
+
+
+int tag_destroy(void *tag_arg, void *arg2, void *arg3)
+{
+    logix_tag_p tag = tag_arg;
+    
+    (void)arg2;
+    (void)arg3;
+    
+    /*
+     * If we are here then there are no other references to this tag and
+     * all operations have been aborted.   We can clean up all the data.
+     */
+     
+    if(tag->session) {
+        tag->session = rc_dec(session);
+    }
+    
+    return PLCTAG_STATUS_OK;
+}
+
+
+
+int tag_abort(plc_tag_p tag)
+{
+    logix_tag_p tag = (logix_tag_p)tag_arg;
+
+    /* make sure that no operations are in flight */
+    
+    // TODO
+    
+    return PLCTAG_STATUS_OK;
+}
+
+int tag_read(plc_tag_p tag);
+int tag_write(plc_tag_p tag);
+int tag_get_int(plc_tag_p tag, int offset, int size, int64_t *val);
+int tag_set_int(plc_tag_p tag, int offset, int size, int64_t val);
+int tag_get_float(plc_tag_p tag, int offset, int size, double *val);
+int tag_set_float(plc_tag_p tag, int offset, int size, double *val);
+int tag_status(plc_tag_p tag);
+int tag_size(plc_tag_p tag);
+
+
 
 /*************************************************************************
  **************************** API Functions ******************************
  ************************************************************************/
+
+
+
+
 
 /*
  * eip_cip_tag_status

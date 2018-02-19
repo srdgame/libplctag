@@ -64,7 +64,7 @@ static int recv_forward_open_resp(ab_connection_p connection, ab_request_p req);
 //~ static int connection_empty_unsafe(ab_connection_p connection);
 //~ static int connection_is_empty(ab_connection_p connection);
 //static int connection_cleanup_unsafe(ab_connection_p connection);
-static void connection_cleanup(void *connection);
+static int connection_cleanup(void *connection_arg, void *arg2, void *arg3);
 static int connection_close(ab_connection_p connection);
 static int send_forward_close_req(ab_connection_p connection, ab_request_p req);
 static int recv_forward_close_resp(ab_connection_p connection, ab_request_p req);
@@ -424,14 +424,14 @@ int recv_forward_open_resp(ab_connection_p connection, ab_request_p req)
 
 
 
-void connection_cleanup(void *connection_arg, void *arg1, void *arg2)
+int connection_cleanup(void *connection_arg, void *arg2, void *arg3)
 {
     ab_connection_p connection = connection_arg;
     int really_destroy = 1;
     
     /* arg1, and arg2 are not used. */
-    (void) arg1;
     (void) arg2;
+    (void) arg3;
 
     pdebug(DEBUG_INFO, "Starting.");
 

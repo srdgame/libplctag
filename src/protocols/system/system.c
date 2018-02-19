@@ -19,8 +19,9 @@
  ***************************************************************************/
 
 #include <platform.h>
-#include <util/debug.h>
 #include <util/attr.h>
+#include <util/debug.h>
+#include <util/refcount.h>
 #include <lib/tag.h>
 #include <lib/libplctag.h>
 //#include <system/tag.h>
@@ -146,16 +147,19 @@ int system_tag_create(attr attribs, plc_tag_p *result)
 
 int tag_destroy(void *tag_arg, void *arg2, void *arg3)
 {
-    system_tag_p tag = (system_tag_p)tag_arg;
+    plc_tag_p tag = (plc_tag_p)tag_arg;
     int rc = PLCTAG_STATUS_OK;
+    
+    (void)arg2;
+    (void)arg3;
 
-    pdebug(DEBUG_INFO,"Starting")
+    pdebug(DEBUG_INFO,"Starting");
 
     if(!tag) {
         return PLCTAG_ERR_NULL_PTR;
     }
 
-    rc = plc_tag_deinit((plc_tag_p)tag);
+    rc = plc_tag_deinit(tag);
     
     pdebug(DEBUG_INFO,"Done.");
     
@@ -195,7 +199,7 @@ static int system_tag_status(plc_tag_p tag)
 
 int system_tag_read_debug(plc_tag_p ptag)
 {
-    system_tag_debug_p tag = (system_tag_p)ptag;
+    system_tag_debug_p tag = (system_tag_debug_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -214,7 +218,7 @@ int system_tag_read_debug(plc_tag_p ptag)
 
 int system_tag_write_debug(plc_tag_p ptag)
 {
-    system_tag_debug_p tag = (system_tag_p)ptag;
+    system_tag_debug_p tag = (system_tag_debug_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -232,9 +236,9 @@ int system_tag_write_debug(plc_tag_p ptag)
 
 
 
-static int system_get_int_debug(plc_tag_p tag, int offset, int size, int64_t *val)
+static int system_get_int_debug(plc_tag_p ptag, int offset, int size, int64_t *val)
 {
-    system_tag_debug_p tag = (system_tag_p)ptag;
+    system_tag_debug_p tag = (system_tag_debug_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -260,9 +264,9 @@ static int system_get_int_debug(plc_tag_p tag, int offset, int size, int64_t *va
 
 
 
-static int system_set_int_debug(plc_tag_p tag, int offset, int size, int64_t val)
+static int system_set_int_debug(plc_tag_p ptag, int offset, int size, int64_t val)
 {
-    system_tag_debug_p tag = (system_tag_p)ptag;
+    system_tag_debug_p tag = (system_tag_debug_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -291,9 +295,9 @@ static int system_set_int_debug(plc_tag_p tag, int offset, int size, int64_t val
 
 
 
-static int system_tag_size_debug(plc_tag_p tag)
+static int system_tag_size_debug(plc_tag_p ptag)
 {
-    system_tag_debug_p tag = (system_tag_p)ptag;
+    system_tag_debug_p tag = (system_tag_debug_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -310,9 +314,9 @@ static int system_tag_size_debug(plc_tag_p tag)
 
 /* version tag routines. */
 
-static int system_tag_read_version(plc_tag_p tag)
+static int system_tag_read_version(plc_tag_p ptag)
 {
-    system_tag_version_p tag = (system_tag_p)ptag;
+    system_tag_version_p tag = (system_tag_version_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -331,10 +335,10 @@ static int system_tag_read_version(plc_tag_p tag)
 
 
 
-static int system_get_int_version(plc_tag_p tag, int offset, int size, int64_t *val)
+static int system_get_int_version(plc_tag_p ptag, int offset, int size, int64_t *val)
 {
     int rc = PLCTAG_STATUS_OK;
-    system_tag_version_p tag = (system_tag_p)ptag;
+    system_tag_version_p tag = (system_tag_version_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -372,9 +376,9 @@ static int system_get_int_version(plc_tag_p tag, int offset, int size, int64_t *
 
 
 
-static int system_tag_size_version(plc_tag_p tag)
+static int system_tag_size_version(plc_tag_p ptag)
 {
-    system_tag_version_p tag = (system_tag_p)ptag;
+    system_tag_version_p tag = (system_tag_version_p)ptag;
 
     pdebug(DEBUG_INFO,"Starting.");
 

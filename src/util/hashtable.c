@@ -24,6 +24,7 @@
 #include <util/debug.h>
 #include <util/hash.h>
 #include <util/hashtable.h>
+#include <util/mem.h>
 #include <util/vector.h>
 
 

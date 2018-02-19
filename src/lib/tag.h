@@ -36,9 +36,12 @@
 #include <platform.h>
 #include <util/attr.h>
 
-#define PLCTAG_CANARY (0xACA7CAFE)
-#define PLCTAG_DATA_LITTLE_ENDIAN   (0)
-#define PLCTAG_DATA_BIG_ENDIAN      (1)
+//#define PLCTAG_CANARY (0xACA7CAFE)
+//#define PLCTAG_DATA_LITTLE_ENDIAN   (0)
+//#define PLCTAG_DATA_BIG_ENDIAN      (1)
+
+extern const char *VERSION;
+extern int VERSION_ARRAY[3];
 
 extern mutex_p global_library_mutex;
 
@@ -60,7 +63,11 @@ typedef int (*tag_set_float_func)(plc_tag_p tag, int offset, int size, double va
 
 
 
-/* we'll need to set these per protocol type. */
+/* 
+ * Each protocol must implement the following functions.
+ * 
+ * abort and get_status are required.
+ */
 struct tag_vtable_t {
     tag_vtable_func abort;
     tag_vtable_func read;
@@ -85,14 +92,13 @@ typedef struct tag_vtable_t *tag_vtable_p;
 
 #define TAG_BASE_STRUCT tag_vtable_p vtable; \
                         mutex_p api_mutex; \
-                        int status; \
-                        int tag_id; \
-                        int64_t read_cache_expire; \
-                        int64_t read_cache_ms
+                        int id; \
+                        int64_t read_cache_expire_ms; \
+                        int64_t read_cache_duration_ms
 
-struct plc_tag_dummy {
-    int tag_id;
-};
+//struct plc_tag_dummy {
+//    int tag_id;
+//};
 
 struct plc_tag_t {
     TAG_BASE_STRUCT;
@@ -111,7 +117,7 @@ struct plc_tag_t {
 /*
  * Set up the generic parts of a tag.
  */
-extern int plc_tag_init(plc_tag_p tag, tag_vtable_p vtable);
+extern int plc_tag_init(plc_tag_p tag, attr attribs, tag_vtable_p vtable);
 extern int plc_tag_deinit(plc_tag_p tag);
 
 

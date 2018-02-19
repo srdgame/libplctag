@@ -23,18 +23,23 @@
 
 #include <limits.h>
 #include <float.h>
+#include <inttypes.h>
+#include <stdlib.h>
 #include <lib/libplctag.h>
 #include <lib/tag.h>
 #include <platform.h>
 #include <util/attr.h>
 #include <util/debug.h>
 #include <util/hashtable.h>
+#include <util/job.h>
+#include <util/refcount.h>
+#include <util/resource.h>
 #include <ab/create.h>
 
 
 /* library visible data */
-const char *VERSION="2.0.5";
-const int VERSION_ARRAY[3] = {2,0,5};
+const char *VERSION="2.0.6";
+const int VERSION_ARRAY[3] = {2,0,6};
 mutex_p global_library_mutex = NULL;
 
 /* local data. */
@@ -47,33 +52,11 @@ static volatile int global_tag_id = 1;
 
 static int initialize_modules();
 static void destroy_modules();
-static int lib_init();
-static void lib_teardown();
+
+static int tag_add_to_lookup(plc_tag_p tag);
+static plc_tag_p tag_lookup(tag_id id);
 
 
-static plc_tag_p tag_id_to_tag_ptr(plc_tag tag_id);
-static int allocate_new_tag_to_id_mapping(plc_tag_p tag);
-static int release_tag_to_id_mapping(plc_tag_p tag);
-static int api_lock(int index);
-static int api_unlock(int index);
-static int tag_id_to_tag_index(plc_tag tag_id_ptr);
-
-
-#define TAG_ID_MASK (0xFFFFFFF)
-#define TAG_INDEX_MASK (0x3FFF)
-#define MAX_TAG_ENTRIES (TAG_INDEX_MASK + 1)
-#define TAG_ID_ERROR INT_MIN
-
-/* these are only internal to the file */
-
-static volatile int next_tag_id = MAX_TAG_ENTRIES;
-static volatile plc_tag_p tag_map[MAX_TAG_ENTRIES + 1] = {0,};
-static volatile mutex_p tag_api_mutex[MAX_TAG_ENTRIES + 1] = {0,};
-
-
-
-#define api_block(tag_id)                                              \
-for(int __sync_flag_api_block_foo_##__LINE__ = 1; __sync_flag_api_block_foo_##__LINE__ ; __sync_flag_api_block_foo_##__LINE__ = 0, api_unlock(tag_id_to_tag_index(tag_id))) for(int __sync_rc_api_block_foo_##__LINE__ = api_lock(tag_id_to_tag_index(tag_id)); __sync_rc_api_block_foo_##__LINE__ == PLCTAG_STATUS_OK && __sync_flag_api_block_foo_##__LINE__ ; __sync_flag_api_block_foo_##__LINE__ = 0)
 
 
 /**************************************************************************
@@ -132,6 +115,7 @@ LIB_EXPORT const char* plc_tag_decode_error(int rc)
         case PLCTAG_ERR_NOT_FOUND: return "PLCTAG_ERR_NOT_FOUND"; break;
         case PLCTAG_ERR_ABORT: return "PLCTAG_ERR_ABORT"; break;
         case PLCTAG_ERR_WINSOCK: return "PLCTAG_ERR_WINSOCK"; break;
+        case PLCTAG_ERR_DUPLICATE: return "PLCTAG_ERR_DUPLICATE"; break;
         case PLCTAG_ERR_BUSY: return "PLCTAG_ERR_BUSY"; break;
 
         default: return "Unknown error."; break;
@@ -147,29 +131,27 @@ LIB_EXPORT const char* plc_tag_decode_error(int rc)
  * This is where the dispatch occurs to the protocol specific implementation.
  */
 
-LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
+LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout)
 {
     plc_tag_p tag = PLC_TAG_P_NULL;
-    plc_tag tag_id = PLCTAG_ERR_OUT_OF_BOUNDS;
     attr attribs = NULL;
     int rc = PLCTAG_STATUS_OK;
-    int read_cache_ms = 0;
     const char *protocol = NULL;
 
     pdebug(DEBUG_INFO,"Starting");
 
-    if(initialize_modules() != PLCTAG_STATUS_OK) {
-        return PLC_TAG_NULL;
+    rc = initialize_modules();
+    if(rc != PLCTAG_STATUS_OK) {
+        return rc;
     }
 
     if(!attrib_str || str_length(attrib_str) == 0) {
-        return PLC_TAG_NULL;
+        return PLCTAG_ERR_BAD_PARAM;
     }
 
     attribs = attr_create_from_str(attrib_str);
-
     if(!attribs) {
-        return PLC_TAG_NULL;
+        return PLCTAG_ERR_NO_MEM;
     }
 
     /* set debug level */
@@ -193,8 +175,9 @@ LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
     }
     
     /* this selects a tag ID and adds the tag to the lookup table. */
-    rc = add_tag_to_lookup(tag);
+    rc = tag_add_to_lookup(tag);
     if(rc != PLCTAG_STATUS_OK) {
+        rc_dec(tag);
         pdebug(DEBUG_WARN, "Error attempting to add the new tag to the lookup table!");
         return rc;
     }
@@ -202,85 +185,18 @@ LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
     if(timeout > 0) {
         int64_t max_time = time_ms() + timeout;
         
-        while(max_time < time_ms() && tag->vtable->status(tag) == PLCTAG_STATUS_PENDING) {
+        rc = tag->vtable->get_status(tag);
+        
+        while(max_time > time_ms() && rc == PLCTAG_STATUS_PENDING) {
             sleep_ms(1);
+            rc = tag->vtable->get_status(tag);
         }
     }
 
     pdebug(DEBUG_INFO, "Done.");
     
-    return tag->tag_id;
+    return tag->id;
 }
-
-
-
-/*
- * plc_tag_lock
- *
- * Lock the tag against use by other threads.  Because operations on a tag are
- * very much asynchronous, actions like getting and extracting the data from
- * a tag take more than one API call.  If more than one thread is using the same tag,
- * then the internal state of the tag will get broken and you will probably experience
- * a crash.
- *
- * This should be used to initially lock a tag when starting operations with it
- * followed by a call to plc_tag_unlock when you have everything you need from the tag.
- */
-
-LIB_EXPORT int plc_tag_lock(plc_tag tag_id)
-{
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_INFO, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-        } else {
-            rc = mutex_lock(tag->mut);
-        }
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
-
-
-
-/*
- * plc_tag_unlock
- *
- * The opposite action of plc_tag_unlock.  This allows other threads to access the
- * tag.
- */
-
-LIB_EXPORT int plc_tag_unlock(plc_tag tag_id)
-{
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_INFO, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-        } else {
-            rc = mutex_unlock(tag->mut);
-        }
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
 
 
 
@@ -296,52 +212,30 @@ LIB_EXPORT int plc_tag_unlock(plc_tag tag_id)
  * The status of the operation is returned.
  */
 
-int plc_tag_abort_mapped(plc_tag_p tag)
+
+LIB_EXPORT int plc_tag_abort(tag_id id)
 {
     int rc = PLCTAG_STATUS_OK;
-    pdebug(DEBUG_INFO, "Starting.");
-
-    /* who knows what state the tag data is in.  */
-    tag->read_cache_expire = (uint64_t)0;
-
-    if(!tag->vtable || !tag->vtable->abort) {
-        pdebug(DEBUG_WARN,"Tag does not have a abort function!");
-        return PLCTAG_ERR_NOT_IMPLEMENTED;
-    }
-
-    /* this may be synchronous. */
-    rc = tag->vtable->abort(tag);
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
-
-LIB_EXPORT int plc_tag_abort(plc_tag tag_id)
-{
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
+    plc_tag_p tag = tag_lookup(id);
 
     pdebug(DEBUG_INFO, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-        } else {
-            rc = plc_tag_abort_mapped(tag);
+    if(tag) { 
+        critical_block(tag->api_mutex) {
+            rc = tag->vtable->abort(tag);
         }
+        
+        /* we are done. */
+        rc_dec(tag);
+    } else {
+        pdebug(DEBUG_WARN,"Tag not found.");
+        rc = PLCTAG_ERR_NOT_FOUND;
     }
 
     pdebug(DEBUG_INFO, "Done.");
 
     return rc;
 }
-
-
-
 
 
 
@@ -359,74 +253,42 @@ LIB_EXPORT int plc_tag_abort(plc_tag tag_id)
  * never block.
  */
 
-int plc_tag_destroy_mapped(plc_tag_p tag)
-{
-    int rc = PLCTAG_STATUS_OK;
 
-    pdebug(DEBUG_INFO, "Starting.");
-
-    if(!tag || !tag->vtable) {
-        pdebug(DEBUG_WARN,"Tag vtable is missing!");
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    /*
-     * first, unmap the tag.
-     *
-     * This might be called from something other than plc_tag_destroy, so
-     * do not make assumptions that this was already done.  However, it is
-     * required that if this is called directly, then it must always be
-     * the case that the tag has not been handed to the library client!
-     *
-     * If that happens, then it is possible that two threads could try to
-     * delete the same tag at the same time.
-     */
-
-    pdebug(DEBUG_DETAIL, "Releasing tag mapping.");
-
-    release_tag_to_id_mapping(tag);
-
-    /* destroy the tag's mutex */
-    mutex_destroy(&tag->mut);
-
-    /* abort anything in flight */
-    rc = plc_tag_abort_mapped(tag);
-
-    /* call the destructor */
-    if(!tag->vtable || !tag->vtable->destroy) {
-        pdebug(DEBUG_ERROR, "tag destructor not defined!");
-        rc = PLCTAG_ERR_NOT_IMPLEMENTED;
-    } else {
-        /*
-         * It is the responsibility of the destroy
-         * function to free all memory associated with
-         * the tag.
-         */
-        rc = tag->vtable->destroy(tag);
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
-LIB_EXPORT int plc_tag_destroy(plc_tag tag_id)
+LIB_EXPORT int plc_tag_destroy(tag_id id)
 {
     int rc = PLCTAG_STATUS_OK;
     plc_tag_p tag = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-        } else {
-            /* the tag was still mapped, so destroy it. */
-            rc = plc_tag_destroy_mapped(tag);
+    /*
+     * We do this in stages.  
+     * 
+     * First, we remove the tag from the hashtable.   This prevents
+     * any other thread after this from finding the tag.   However, there
+     * could be other threads using the tag right now.   Later we need to
+     * get the API mutex.
+     * 
+     * We do not acquire a reference to the tag because we are using the
+     * reference from the hashtable.  
+     */
+    critical_block(global_library_mutex) {
+        tag = hashtable_remove(tags, &id, sizeof(id));
+    }
+
+    /* abort any operations in flight. We need to call the implementation directly. */
+    if(tag) {
+        /* Now trigger the API mutex to ensure that no one else is using the tag. */
+        critical_block(tag->api_mutex) {
+            rc = tag->vtable->abort(tag);
         }
     }
+
+    /* 
+     * We are safe to decrement the ref count.  This will kick off any destructors
+     * once the ref count hits zero.
+     */
+    rc_dec(tag);
 
     pdebug(DEBUG_INFO, "Done.");
 
@@ -446,91 +308,95 @@ LIB_EXPORT int plc_tag_destroy(plc_tag tag_id)
  * The status of the operation is returned.
  */
 
-LIB_EXPORT int plc_tag_read(plc_tag tag_id, int timeout)
+
+LIB_EXPORT int plc_tag_read(tag_id id, int timeout)
 {
     int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
+    plc_tag_p tag = tag_lookup(id);
 
-    pdebug(DEBUG_INFO, "Starting.");
+    pdebug(DEBUG_SPEW, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-            break;
-        }
+    if(tag) { 
+        critical_block(tag->api_mutex) {
+            /* check for null parts */
+            if(!tag->vtable || !tag->vtable->read) {
+                pdebug(DEBUG_WARN, "Tag does not have a read function!");
+                rc = PLCTAG_ERR_NOT_IMPLEMENTED;
+                break;
+            }
 
-        /* check for null parts */
-        if(!tag->vtable || !tag->vtable->read) {
-            pdebug(DEBUG_WARN, "Tag does not have a read function!");
-            rc = PLCTAG_ERR_NOT_IMPLEMENTED;
-            break;
-        }
+            /* check read cache, if not expired, return existing data. */
+            if(tag->read_cache_expire_ms > time_ms()) {
+                pdebug(DEBUG_INFO, "Returning cached data.");
+                rc = PLCTAG_STATUS_OK;
+                break;
+            }
 
-        /* check read cache, if not expired, return existing data. */
-        if(tag->read_cache_expire > time_ms()) {
-            pdebug(DEBUG_INFO, "Returning cached data.");
-            rc = PLCTAG_STATUS_OK;
-            break;
-        }
+            /* the protocol implementation does not do the timeout. */
+            rc = tag->vtable->read(tag);
 
-        /* the protocol implementation does not do the timeout. */
-        rc = tag->vtable->read(tag);
+            /* if error, return now */
+            if(rc != PLCTAG_STATUS_PENDING && rc != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_WARN,"Error from read command!");
+                break;
+            }
 
-        /* if error, return now */
-        if(rc != PLCTAG_STATUS_PENDING && rc != PLCTAG_STATUS_OK) {
-            break;
-        }
-
-        /* set up the cache time */
-        if(tag->read_cache_ms) {
-            tag->read_cache_expire = time_ms() + tag->read_cache_ms;
-        }
-
-        /*
-         * if there is a timeout, then loop until we get
-         * an error or we timeout.
-         */
-        if(timeout) {
-            int64_t timeout_time = timeout + time_ms();
-            int64_t start_time = time_ms();
-
-            while(rc == PLCTAG_STATUS_PENDING && timeout_time > time_ms()) {
-                rc = plc_tag_status_mapped(tag);
-
-                /*
-                 * terminate early and do not wait again if the
-                 * IO is done.
-                 */
-                if(rc != PLCTAG_STATUS_PENDING) {
-                    break;
-                }
-
-                sleep_ms(5); /* MAGIC */
+            /* set up the cache time */
+            if(tag->read_cache_duration_ms) {
+                tag->read_cache_expire_ms = time_ms() + tag->read_cache_duration_ms;
             }
 
             /*
-             * if we dropped out of the while loop but the status is
-             * still pending, then we timed out.
-             *
-             * Abort the operation and set the status to show the timeout.
+             * if there is a timeout, then loop until we get
+             * an error or we timeout.
              */
-            if(rc == PLCTAG_STATUS_PENDING) {
-                plc_tag_abort_mapped(tag);
-                rc = PLCTAG_ERR_TIMEOUT;
+            if(timeout) {
+                int64_t timeout_time = timeout + time_ms();
+                int64_t start_time = time_ms();
+
+                while(rc == PLCTAG_STATUS_PENDING && timeout_time > time_ms()) {
+                    rc = tag->vtable->get_status(tag);
+
+                    /*
+                     * terminate early and do not wait again if the
+                     * IO is done.
+                     */
+                    if(rc != PLCTAG_STATUS_PENDING) {
+                        break;
+                    }
+
+                    sleep_ms(1); /* MAGIC */
+                }
+
+                /*
+                 * if we dropped out of the while loop but the status is
+                 * still pending, then we timed out.
+                 *
+                 * Abort the operation and set the status to show the timeout.
+                 */
+                if(rc == PLCTAG_STATUS_PENDING) {
+                    tag->vtable->abort(tag);
+                    
+                    pdebug(DEBUG_WARN, "Write operation timed out!");
+                    
+                    rc = PLCTAG_ERR_TIMEOUT;
+                }
+
+                pdebug(DEBUG_INFO,"elapsed time %" PRId64 "ms",(time_ms()-start_time));
             }
-
-            pdebug(DEBUG_INFO,"elapsed time %ldms",(time_ms()-start_time));
         }
-    } /* end of api block */
+        
+        /* we are done. */
+        rc_dec(tag);
+    } else {
+        pdebug(DEBUG_WARN,"Tag not found.");
+        rc = PLCTAG_ERR_NOT_FOUND;
+    }
 
-    pdebug(DEBUG_INFO, "Done");
+    pdebug(DEBUG_INFO, "Done.");
 
     return rc;
 }
-
-
 
 
 
@@ -546,48 +412,31 @@ LIB_EXPORT int plc_tag_read(plc_tag tag_id, int timeout)
  */
 
 
-int plc_tag_status_mapped(plc_tag_p tag)
-{
-    /* pdebug(DEBUG_DETAIL, "Starting."); */
-    if(!tag) {
-        pdebug(DEBUG_ERROR,"Null tag passed!");
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    if(!tag->vtable || !tag->vtable->status) {
-        pdebug(DEBUG_ERROR, "tag status accessor not defined!");
-        return PLCTAG_ERR_NOT_IMPLEMENTED;
-    }
-
-    return tag->vtable->status(tag);
-}
 
 
-
-LIB_EXPORT int plc_tag_status(plc_tag tag_id)
+LIB_EXPORT int plc_tag_status(tag_id id)
 {
     int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
+    plc_tag_p tag = tag_lookup(id);
 
     pdebug(DEBUG_SPEW, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-            break;
+    if(tag) { 
+        critical_block(tag->api_mutex) {
+            rc = tag->vtable->get_status(tag);
         }
-
-        rc = plc_tag_status_mapped(tag);
+        
+        /* we are done. */
+        rc_dec(tag);
+    } else {
+        pdebug(DEBUG_WARN,"Tag not found.");
+        rc = PLCTAG_ERR_NOT_FOUND;
     }
 
     pdebug(DEBUG_SPEW, "Done.");
 
     return rc;
 }
-
-
 
 
 
@@ -604,73 +453,80 @@ LIB_EXPORT int plc_tag_status(plc_tag tag_id)
  * The status of the operation is returned.
  */
 
-LIB_EXPORT int plc_tag_write(plc_tag tag_id, int timeout)
+
+LIB_EXPORT int plc_tag_write(tag_id id, int timeout)
 {
     int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
+    plc_tag_p tag = tag_lookup(id);
 
-    pdebug(DEBUG_INFO, "Starting.");
+    pdebug(DEBUG_SPEW, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-            break;
-        }
+    if(tag) { 
+        critical_block(tag->api_mutex) {
+            /* check for null parts */
+            if(!tag->vtable || !tag->vtable->write) {
+                pdebug(DEBUG_WARN, "Tag does not have a write function!");
+                rc = PLCTAG_ERR_NOT_IMPLEMENTED;
+                break;
+            }
 
-        /* check for null parts */
-        if(!tag->vtable || !tag->vtable->write) {
-            pdebug(DEBUG_WARN, "Tag does not have a write function!");
-            rc = PLCTAG_ERR_NOT_IMPLEMENTED;
-            break;
-        }
+            /* the protocol implementation does not do the timeout. */
+            rc = tag->vtable->write(tag);
 
-        /* the protocol implementation does not do the timeout. */
-        rc = tag->vtable->write(tag);
-
-        /* if error, return now */
-        if(rc != PLCTAG_STATUS_PENDING && rc != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_WARN,"Response from write command is not OK!");
-            break;
-        }
-
-        /*
-         * if there is a timeout, then loop until we get
-         * an error or we timeout.
-         */
-        if(timeout) {
-            int64_t timeout_time = timeout + time_ms();
-
-            while(rc == PLCTAG_STATUS_PENDING && timeout_time > time_ms()) {
-                rc = plc_tag_status_mapped(tag);
-
-                /*
-                 * terminate early and do not wait again if the
-                 * IO is done.
-                 */
-                if(rc != PLCTAG_STATUS_PENDING) {
-                    break;
-                }
-
-                sleep_ms(5); /* MAGIC */
+            /* if error, return now */
+            if(rc != PLCTAG_STATUS_PENDING && rc != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_WARN,"Error from write command!");
+                break;
             }
 
             /*
-             * if we dropped out of the while loop but the status is
-             * still pending, then we timed out.
-             *
-             * Abort the operation and set the status to show the timeout.
+             * if there is a timeout, then loop until we get
+             * an error or we timeout.
              */
-            if(rc == PLCTAG_STATUS_PENDING) {
-                pdebug(DEBUG_WARN, "Write operation timed out.");
-                plc_tag_abort_mapped(tag);
-                rc = PLCTAG_ERR_TIMEOUT;
+            if(timeout) {
+                int64_t timeout_time = timeout + time_ms();
+                int64_t start_time = time_ms();
+
+                while(rc == PLCTAG_STATUS_PENDING && timeout_time > time_ms()) {
+                    rc = tag->vtable->get_status(tag);
+
+                    /*
+                     * terminate early and do not wait again if the
+                     * IO is done.
+                     */
+                    if(rc != PLCTAG_STATUS_PENDING) {
+                        break;
+                    }
+
+                    sleep_ms(1); /* MAGIC */
+                }
+
+                /*
+                 * if we dropped out of the while loop but the status is
+                 * still pending, then we timed out.
+                 *
+                 * Abort the operation and set the status to show the timeout.
+                 */
+                if(rc == PLCTAG_STATUS_PENDING) {
+                    tag->vtable->abort(tag);
+                    
+                    pdebug(DEBUG_WARN, "Write operation timed out!");
+                    
+                    rc = PLCTAG_ERR_TIMEOUT;
+                }
+
+                pdebug(DEBUG_INFO,"elapsed time %" PRId64 "ms",(time_ms()-start_time));
             }
         }
-    } /* end of api block */
+        
+        /* we are done. */
+        rc_dec(tag);
+    } else {
+        pdebug(DEBUG_WARN,"Tag not found.");
+        rc = PLCTAG_ERR_NOT_FOUND;
+    }
 
-    pdebug(DEBUG_INFO, "Done");
+    pdebug(DEBUG_INFO, "Done.");
 
     return rc;
 }
@@ -685,22 +541,934 @@ LIB_EXPORT int plc_tag_write(plc_tag tag_id, int timeout)
 
 
 
-LIB_EXPORT int plc_tag_get_size(plc_tag tag_id)
+LIB_EXPORT int plc_tag_get_size(tag_id id)
 {
-    int result = 0;
+    int result = PLCTAG_STATUS_OK;
+    plc_tag_p tag = tag_lookup(id);
+
+    pdebug(DEBUG_SPEW, "Starting.");
+
+    if(tag) { 
+        critical_block(tag->api_mutex) {
+            /* check for null parts */
+            if(!tag->vtable || !tag->vtable->get_size) {
+                pdebug(DEBUG_WARN, "Tag does not have a size function!");
+                result = PLCTAG_ERR_NOT_IMPLEMENTED;
+                break;
+            }
+            
+            result = tag->vtable->get_size(tag);
+        }
+                
+        /* we are done. */
+        rc_dec(tag);
+    } else {
+        pdebug(DEBUG_WARN,"Tag not found.");
+        result = PLCTAG_ERR_NOT_FOUND;
+    }
+
+    pdebug(DEBUG_INFO, "Done.");
+
+    return result;
+}
+
+
+
+
+
+
+
+
+
+LIB_EXPORT uint64_t plc_tag_get_uint64(tag_id id, int offset)
+{
+    uint64_t res = UINT64_MAX;
+    int rc = PLCTAG_STATUS_OK;
     plc_tag_p tag = NULL;
 
-    pdebug(DEBUG_INFO, "Starting.");
+    pdebug(DEBUG_DETAIL, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            result = PLCTAG_ERR_NOT_FOUND;
-            break;
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(uint64_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (uint64_t)tmp;
         }
+    }
+    
+    rc_dec(tag);
 
-        result = tag->size;
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+LIB_EXPORT int plc_tag_set_uint64(tag_id id, int offset, uint64_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(uint64_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+LIB_EXPORT int64_t plc_tag_get_int64(tag_id id, int offset)
+{
+    int64_t res = INT64_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(int64_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (int64_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_int64(tag_id id, int offset, int64_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        rc = tag->vtable->set_int(tag, offset, sizeof(int64_t), val);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+LIB_EXPORT uint32_t plc_tag_get_uint32(tag_id id, int offset)
+{
+    uint32_t res = UINT32_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(uint32_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (uint32_t)(uint64_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+LIB_EXPORT int plc_tag_set_uint32(tag_id id, int offset, uint32_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(uint32_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+LIB_EXPORT int32_t plc_tag_get_int32(tag_id id, int offset)
+{
+    int32_t res = INT32_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(int32_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (int32_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_int32(tag_id id, int offset, int32_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(int32_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+LIB_EXPORT uint16_t plc_tag_get_uint16(tag_id id, int offset)
+{
+    uint16_t res = UINT16_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(uint16_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (uint16_t)(uint64_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_uint16(tag_id id, int offset, uint16_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(uint16_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+LIB_EXPORT int16_t plc_tag_get_int16(tag_id id, int offset)
+{
+    int16_t res = INT16_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(int16_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (int16_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_int16(tag_id id, int offset, int16_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(int16_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+
+
+LIB_EXPORT uint8_t plc_tag_get_uint8(tag_id id, int offset)
+{
+    uint8_t res = UINT8_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(uint8_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (uint8_t)(uint64_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_uint8(tag_id id, int offset, uint8_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(uint8_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+LIB_EXPORT int8_t plc_tag_get_int8(tag_id id, int offset)
+{
+    int8_t res = INT8_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Integer getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(int8_t), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (int8_t)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_int8(tag_id id, int offset, int8_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        int64_t tmp = (int64_t)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(int8_t), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+LIB_EXPORT double plc_tag_get_float64(tag_id id, int offset)
+{
+    double res = FLT64_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Floating point getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        double tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(double), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (double)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_float64(tag_id id, int offset, double val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        rc = tag->vtable->set_int(tag, offset, sizeof(double), val);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+LIB_EXPORT float plc_tag_get_float32(tag_id id, int offset)
+{
+    float res = FLT32_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+
+    if(!tag->vtable->get_int) {
+        pdebug(DEBUG_WARN, "Floating point getting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        double tmp = 0;
+        
+        rc = tag->vtable->get_int(tag, offset, sizeof(float), &tmp);
+        
+        if(rc == PLCTAG_STATUS_OK) {
+            res = (float)tmp;
+        }
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return res;
+}
+
+
+
+LIB_EXPORT int plc_tag_set_float32(tag_id id, int offset, float val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = NULL;
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    tag = tag_lookup(id);
+
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag %d not found.", id);
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    if(!tag->vtable->set_int) {
+        pdebug(DEBUG_WARN, "Integer setting function not implemented!");
+        return PLCTAG_ERR_NOT_IMPLEMENTED;
+    }
+
+    critical_block(tag->api_mutex) {
+        double tmp = (double)val;
+        
+        rc = tag->vtable->set_int(tag, offset, sizeof(float), tmp);
+    }
+    
+    rc_dec(tag);
+
+    pdebug(DEBUG_DETAIL,"Done.");
+
+    return rc;
+}
+
+
+
+
+
+
+
+/*******************************************************************************
+ *************************** External Helper Functions *************************
+ *******************************************************************************/
+ 
+int plc_tag_init(plc_tag_p tag, attr attribs, tag_vtable_p vtable)
+{
+    int rc = PLCTAG_STATUS_OK;
+    int64_t read_cache_ms = 0;
+    
+    tag->vtable = vtable;
+    
+    /* set up the mutexes */
+    rc = mutex_create(&tag->api_mutex);
+    if(rc != PLCTAG_STATUS_OK) {
+        rc_dec(tag);
+        pdebug(DEBUG_ERROR,"Unable to create API mutex!");
+        return rc;
+    }
+
+//    rc = mutex_create(&tag->external_mut);
+//    if(rc != PLCTAG_STATUS_OK) {
+//        rc_dec(tag);
+//        pdebug(DEBUG_ERROR,"Unable to create external mutex!");
+//        return rc;
+//    }
+
+    /* set up the read cache config. */
+    read_cache_ms = attr_get_int(attribs,"read_cache_ms",0);
+
+    if(read_cache_ms < 0) {
+        pdebug(DEBUG_WARN, "read_cache_ms value must be positive, using zero.");
+        read_cache_ms = 0;
+    }
+
+    tag->read_cache_expire_ms = (uint64_t)0;
+    tag->read_cache_duration_ms = (uint64_t)read_cache_ms;
+    
+    return rc;
+}
+
+
+int plc_tag_deinit(plc_tag_p tag)
+{
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(tag->api_mutex) {
+        rc = mutex_destroy(&tag->api_mutex);
+    }
+    
+    return rc;
+}
+
+
+
+
+
+
+
+
+
+
+
+/*******************************************************************************
+ ***********************  Implementation Functions *****************************
+ *******************************************************************************/
+
+
+
+
+
+int tag_add_to_lookup(plc_tag_p tag)
+{
+    tag_id id;
+
+    critical_block(global_library_mutex) {
+        int found = 0;
+
+        id = global_tag_id;
+
+        do {
+            plc_tag_p tmp;
+
+            /* get a new ID */
+            id++;
+
+            if(id <= 0 || id > MAX_TAG_ID) {
+                id = 1;
+            }
+
+            tmp = hashtable_get(tags, &id, sizeof(id));
+            if(!tmp) {
+                found = 1;
+
+                global_tag_id = id;
+                tag->id = id;
+
+                /* FIXME - check return code! */
+                hashtable_put(tags, &id, sizeof(id), tag);
+            }
+        } while(!found);
+    }
+
+    return PLCTAG_STATUS_OK;
+}
+
+
+
+
+
+
+
+plc_tag_p tag_lookup(tag_id id)
+{
+    plc_tag_p result = NULL;
+
+    critical_block(global_library_mutex) {
+        result = hashtable_get(tags, &id, sizeof(id));
+        result = rc_inc(result);
     }
 
     return result;
@@ -709,761 +1477,12 @@ LIB_EXPORT int plc_tag_get_size(plc_tag tag_id)
 
 
 
-LIB_EXPORT uint32_t plc_tag_get_uint32(plc_tag tag_id, int offset)
-{
-    uint32_t res = UINT32_MAX;
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
 
-    pdebug(DEBUG_DETAIL, "Starting.");
 
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
 
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
 
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
 
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(uint32_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
 
-        res = ((uint32_t)(tag->data[offset])) +
-              ((uint32_t)(tag->data[offset+1]) << 8) +
-              ((uint32_t)(tag->data[offset+2]) << 16) +
-              ((uint32_t)(tag->data[offset+3]) << 24);
-    }
-
-    return res;
-}
-
-
-
-LIB_EXPORT int plc_tag_set_uint32(plc_tag tag_id, int offset, uint32_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(uint32_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        /* write the data. */
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-    }
-
-    return rc;
-}
-
-
-
-
-LIB_EXPORT int32_t  plc_tag_get_int32(plc_tag tag_id, int offset)
-{
-    int32_t res = INT32_MIN;
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(int32_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
-
-        res = (int32_t)(((uint32_t)(tag->data[offset])) +
-                        ((uint32_t)(tag->data[offset+1]) << 8) +
-                        ((uint32_t)(tag->data[offset+2]) << 16) +
-                        ((uint32_t)(tag->data[offset+3]) << 24));
-    }
-
-    return res;
-}
-
-
-
-LIB_EXPORT int plc_tag_set_int32(plc_tag tag_id, int offset, int32_t ival)
-{
-    uint32_t val = (uint32_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(int32_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-
-LIB_EXPORT uint16_t plc_tag_get_uint16(plc_tag tag_id, int offset)
-{
-    uint16_t res = UINT16_MAX;
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(uint16_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
-
-        res = ((uint16_t)(tag->data[offset])) +
-              ((uint16_t)(tag->data[offset+1]) << 8);
-    }
-
-    return res;
-}
-
-
-
-
-LIB_EXPORT int plc_tag_set_uint16(plc_tag tag_id, int offset, uint16_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(uint16_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-
-LIB_EXPORT int16_t  plc_tag_get_int16(plc_tag tag_id, int offset)
-{
-    int16_t res = INT16_MIN;
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(int16_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
-
-        res = (int16_t)(((uint16_t)(tag->data[offset])) +
-                        ((uint16_t)(tag->data[offset+1]) << 8));
-    }
-
-    return res;
-}
-
-
-
-
-LIB_EXPORT int plc_tag_set_int16(plc_tag tag_id, int offset, int16_t ival)
-{
-    uint16_t val = (uint16_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(int16_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-LIB_EXPORT uint8_t plc_tag_get_uint8(plc_tag tag_id, int offset)
-{
-    uint8_t res = UINT8_MAX;
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(uint8_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
-
-        res = tag->data[offset];
-    }
-
-    return res;
-}
-
-
-
-
-LIB_EXPORT int plc_tag_set_uint8(plc_tag tag_id, int offset, uint8_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(uint8_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        tag->data[offset] = val;
-    }
-
-    return rc;
-}
-
-
-
-
-
-LIB_EXPORT int8_t plc_tag_get_int8(plc_tag tag_id, int offset)
-{
-    int8_t res = INT8_MIN;
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-       if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(int8_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
-
-        res = (int8_t)(tag->data[offset]);
-    }
-
-    return res;
-}
-
-
-
-
-LIB_EXPORT int plc_tag_set_int8(plc_tag tag_id, int offset, int8_t ival)
-{
-    uint8_t val = (uint8_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    plc_tag_p tag = NULL;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(int8_t)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        tag->data[offset] = (uint8_t)val;
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-
-
-LIB_EXPORT float plc_tag_get_float32(plc_tag tag_id, int offset)
-{
-    uint32_t ures;
-    float res = FLT_MAX;
-    plc_tag_p tag = NULL;
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(ures)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            break;
-        }
-
-        ures = ((uint32_t)(tag->data[offset])) +
-               ((uint32_t)(tag->data[offset+1]) << 8) +
-               ((uint32_t)(tag->data[offset+2]) << 16) +
-               ((uint32_t)(tag->data[offset+3]) << 24);
-    }
-
-    /* copy the data */
-    mem_copy(&res,&ures,sizeof(res));
-
-    return res;
-}
-
-
-
-
-LIB_EXPORT int plc_tag_set_float32(plc_tag tag_id, int offset, float fval)
-{
-    int rc = PLCTAG_STATUS_OK;
-    uint32_t val = 0;
-    plc_tag_p tag = NULL;
-
-    /* copy the data */
-    mem_copy(&val, &fval, sizeof(val));
-
-    api_block(tag_id) {
-        tag = tag_id_to_tag_ptr(tag_id);
-        if(!tag) {
-            pdebug(DEBUG_WARN,"Tag not found.");
-            rc = PLCTAG_ERR_NOT_FOUND;
-            break;
-        }
-
-        /* is the tag ready for this operation? */
-        rc = plc_tag_status_mapped(tag);
-        if(rc != PLCTAG_STATUS_OK && rc != PLCTAG_ERR_OUT_OF_BOUNDS) {
-            pdebug(DEBUG_WARN,"Tag not in good state!");
-            break;
-        }
-
-        /* is there data? */
-        if(!tag->data) {
-            pdebug(DEBUG_WARN,"Tag has no data!");
-            rc = PLCTAG_ERR_NO_DATA;
-            break;
-        }
-
-        /* is there enough data */
-        if((offset < 0) || (offset + ((int)sizeof(val)) > tag->size)) {
-            pdebug(DEBUG_WARN,"Data offset out of bounds.");
-            rc = PLCTAG_ERR_OUT_OF_BOUNDS;
-            break;
-        }
-
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-    }
-
-    return rc;
-}
-
-
-
-
-
-/*****************************************************************************************************
- ****************************  Helper functions for generic internal use *****************************
- ****************************************************************************************************/
-
-
-
-
-/*
- * plc_tag_init()
- *
- * Set up the generic parts of the tag.
- */
-
-int plc_tag_init(plc_tag_p tag, attr attribs, tag_vtable_p vtable)
-{
-    plc_tag tag_id = PLCTAG_ERR_OUT_OF_BOUNDS;
-    int rc = PLCTAG_STATUS_OK;
-    int read_cache_ms = 0;
-
-    pdebug(DEBUG_INFO,"Starting");
-    
-    if(!tag) {
-        pdebug(DEBUG_WARN,"Called with null tag pointer!");
-        return PLCTAG_ERR_NULL_PTR;
-    }
-    
-    tag->vtable = vtable;
-
-    /* set up the read cache config. */
-    read_cache_ms = attr_get_int(attribs,"read_cache_ms",0);
-    if(read_cache_ms < 0) {
-        pdebug(DEBUG_WARN, "read_cache_ms value must be positive, using zero.");
-        read_cache_ms = 0;
-    }
-
-    tag->read_cache_expire = (uint64_t)0;
-    tag->read_cache_ms = (uint64_t)read_cache_ms;
-
-    /* create tag mutex */
-    rc = mutex_create(&tag->api_mutex);
-
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to create tag mutex!");
-        
-        return rc;
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
-
-
-
-
-
-
-/*
- * plc_tag_deinit()
- *
- * Tear down the generic parts of the tag.
- * 
- * This should be called from the protocol's tag destructor.
- */
-
-int plc_tag_deinit(plc_tag_p tag)
-{
-    int rc = PLCTAG_STATUS_OK;
-    
-    pdebug(DEBUG_INFO,"Starting");
-
-    /* destroy tag mutex */
-    rc = mutex_destroy(&tag->api_mutex);
-
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to destroy tag mutex!");
-        
-        return rc;
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
-
-
-
-/*****************************************************************************************************
- *********************************  Library set up/tear down routines ********************************
- ****************************************************************************************************/
 
 
 int initialize_modules(void)
@@ -1476,21 +1495,44 @@ int initialize_modules(void)
     }
 
     if(!library_initialized) {
-        pdebug(DEBUG_INFO,"Initializing library modules.");
-        rc = lib_init();
+        pdebug(DEBUG_INFO,"Initializing modules.");
 
-        if(rc == PLCTAG_STATUS_OK) {
-            rc = job_init();
-        } else {
-            pdebug(DEBUG_ERROR,"Job utility failed to initialize correctly!");
-            return rc;
+        pdebug(DEBUG_INFO,"Initializing library global mutex.");
+
+        /* first see if the mutex is there. */
+        if (!global_library_mutex) {
+            rc = mutex_create((mutex_p*)&global_library_mutex);
+
+            if (rc != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
+            }
         }
 
+        pdebug(DEBUG_INFO,"Creating internal tag hashtable.");
         if(rc == PLCTAG_STATUS_OK) {
-            rc = ab_init();
-        } else {
-            pdebug(DEBUG_ERROR,"AB protocol failed to initialize correctly!");
-            return rc;
+            tags = hashtable_create(5); /* FIXME - MAGIC */
+            if(!tags) {
+                pdebug(DEBUG_ERROR,"Unable to create internal tag hashtable!");
+                rc = PLCTAG_ERR_CREATE;
+            }
+        }
+
+        pdebug(DEBUG_INFO,"Setting up resource service.");
+        if(rc == PLCTAG_STATUS_OK) {
+            rc = resource_service_init();
+
+            if(rc != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_ERROR,"Resource service failed to initialize correctly!");
+            }
+        }
+
+        pdebug(DEBUG_INFO,"Setting up job service.");
+        if(rc == PLCTAG_STATUS_OK) {
+            rc = job_init();
+
+            if(rc != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_ERROR,"Job service failed to initialize correctly!");
+            }
         }
 
         library_initialized = 1;
@@ -1510,276 +1552,30 @@ int initialize_modules(void)
 
 
 
-void destroy_modules(void)
-{
-    ab_teardown();
-
-    pt_teardown();
-
-    lib_teardown();
-}
-
-
-
-
 /*
- * Initialize the library.  This is called in a threadsafe manner and
- * only called once.
+ * teardown_modules() is called when the main process exits.
+ *
+ * Modify this for any PLC/protocol that needs to have something
+ * torn down at the end.
  */
 
-int lib_init(void)
+void destroy_modules(void)
 {
-    int rc = PLCTAG_STATUS_OK;
+    job_teardown();
+    
+    resource_service_teardown();
 
-    pdebug(DEBUG_INFO,"Setting up global library data.");
-
-    pdebug(DEBUG_INFO,"Initializing library global mutex.");
-
-    /* first see if the mutex is there. */
-    if (!global_library_mutex) {
-        rc = mutex_create((mutex_p*)&global_library_mutex);
-
-        if (rc != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
-        }
-    }
-
-    /* initialize the mutex for API protection */
-    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
-        rc = mutex_create((mutex_p*)&tag_api_mutex[i]);
-    }
-
-    pdebug(DEBUG_INFO,"Done.");
-
-    return rc;
-}
-
-void lib_teardown(void)
-{
     pdebug(DEBUG_INFO,"Tearing down library.");
 
-    /* destroy the mutex for API protection */
-    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
-        mutex_destroy((mutex_p*)&tag_api_mutex[i]);
-        if(tag_map[i]) {
-            pdebug(DEBUG_WARN,"Tag %p at index %d was not destroyed!",tag_map[i],i);
-        }
-    }
+
+    pdebug(DEBUG_INFO,"Releasing internal tag hashtable.");
+    hashtable_destroy(tags);
 
     pdebug(DEBUG_INFO,"Destroying global library mutex.");
     if(global_library_mutex) {
         mutex_destroy((mutex_p*)&global_library_mutex);
     }
 
-
     pdebug(DEBUG_INFO,"Done.");
 }
-
-
-
-
-
-
-/*****************************************************************************************************
- *****************************  Support routines for extra indirection *******************************
- ****************************************************************************************************/
-
-
-static inline int tag_id_inc(int id)
-{
-    if(id <= 0 || id == TAG_ID_ERROR) {
-        pdebug(DEBUG_ERROR, "Incoming ID is not valid! Got %d",id);
-        return TAG_ID_ERROR;
-    }
-
-    id = (id + 1) & TAG_ID_MASK;
-
-    if(id <= 0) {
-        id = 1; /* skip zero intentionally! Can't return an ID of zero because it looks like a bad ID */
-    }
-
-    return id;
-}
-
-static inline int tag_id_to_tag_index(int id)
-{
-    if(id <= 0 || id == TAG_ID_ERROR) {
-        pdebug(DEBUG_ERROR, "Incoming ID is not valid! Got %d",id);
-        return TAG_ID_ERROR;
-    }
-    return (id & TAG_INDEX_MASK);
-}
-
-
-
-/*
- * Must be called with a translated index!
- */
-
-static int api_lock(int index)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL,"Starting");
-
-    if(index < 0 || index > MAX_TAG_ENTRIES) {
-        pdebug(DEBUG_WARN,"Illegal tag index %d",index);
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    rc = mutex_lock(tag_api_mutex[index]);
-
-    pdebug(DEBUG_DETAIL,"Done with status %d", rc);
-
-    return rc;
-}
-
-
-
-/*
- * Must be called with a translated index!
- */
-static int api_unlock(int index)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL,"Starting");
-
-    if(index < 0 || index > MAX_TAG_ENTRIES) {
-        pdebug(DEBUG_WARN,"Illegal tag index %d",index);
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    rc = mutex_unlock(tag_api_mutex[index]);
-
-    pdebug(DEBUG_DETAIL,"Done with status %d", rc);
-
-    return rc;
-}
-
-
-
-
-static int allocate_new_tag_to_id_mapping(plc_tag_p tag)
-{
-    int new_id = next_tag_id;
-    int index = 0;
-    int found = 0;
-
-    for(int count=0; !found && count < MAX_TAG_ENTRIES && new_id != TAG_ID_ERROR; count++) {
-        new_id = tag_id_inc(new_id);
-
-        /* everything OK? */
-        if(new_id == TAG_ID_ERROR) break;
-
-        index = tag_id_to_tag_index(new_id);
-
-        /* is the slot empty? */
-        if(index != TAG_ID_ERROR && !tag_map[index]) {
-            /* Must lock the api mutex so that we can change the mapping. */
-            api_lock(index);
-
-            /* recheck if the slot is empty. It could have changed while we locked the mutex. */
-            if(!tag_map[index]) {
-                next_tag_id = new_id;
-                tag->tag_id = new_id;
-
-                tag_map[index] = tag;
-
-                found = 1;
-            }
-
-            api_unlock(index);
-        }
-
-        if(index == TAG_ID_ERROR) break;
-    }
-
-    if(found) {
-        return new_id;
-    }
-
-    if(index != TAG_ID_ERROR) {
-        pdebug(DEBUG_ERROR, "Unable to find empty mapping slot!");
-        return PLCTAG_ERR_NO_MEM; /* not really the right error, but close */
-    }
-
-    /* this did not work */
-    return PLCTAG_ERR_NOT_ALLOWED;
-}
-
-
-
-/*
- * This MUST be called while the API mutex for this tag is held!
- */
-
-static plc_tag_p tag_id_to_tag_ptr(plc_tag tag_id)
-{
-    plc_tag_p result = NULL;
-    int index = tag_id_to_tag_index(tag_id);
-
-    pdebug(DEBUG_DETAIL, "Starting");
-
-    if(index == TAG_ID_ERROR) {
-        pdebug(DEBUG_ERROR,"Bad tag ID passed! %d", tag_id);
-        return (plc_tag_p)0;
-    }
-
-    result = tag_map[index];
-    if(result && result->tag_id == tag_id) {
-        pdebug(DEBUG_DETAIL, "Correct mapping at index %d for id %d found with tag %p", index, tag_id, result);
-    } else {
-        pdebug(DEBUG_WARN, "Not found, tag id %d maps to a different tag", tag_id);
-        result = NULL;
-    }
-
-    pdebug(DEBUG_DETAIL,"Done with tag %p", result);
-
-    return result;
-}
-
-
-
-
-/*
- * It is REQUIRED that the tag API mutex be held when this is called!
- */
-
-static int release_tag_to_id_mapping(plc_tag_p tag)
-{
-    int map_index = 0;
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL, "Starting");
-
-    if(!tag || tag->tag_id == 0) {
-        pdebug(DEBUG_ERROR, "Tag null or tag ID is zero.");
-        return PLCTAG_ERR_NOT_FOUND;
-    }
-
-    map_index = tag_id_to_tag_index(tag->tag_id);
-
-    if(map_index == TAG_ID_ERROR) {
-        pdebug(DEBUG_ERROR,"Bad tag ID %d!", tag->tag_id);
-        return PLCTAG_ERR_BAD_DATA;
-    }
-
-    /* find the actual slot and check if it is the right tag */
-    if(!tag_map[map_index] || tag_map[map_index] != tag) {
-        pdebug(DEBUG_WARN, "Tag not found or entry is already clear.");
-        rc = PLCTAG_ERR_NOT_FOUND;
-    } else {
-        pdebug(DEBUG_DETAIL,"Releasing tag %p(%d) at location %d",tag, tag->tag_id, map_index);
-        tag_map[map_index] = (plc_tag_p)(intptr_t)0;
-    }
-
-    pdebug(DEBUG_DETAIL, "Done.");
-
-    return rc;
-}
-
-
-
-
 
