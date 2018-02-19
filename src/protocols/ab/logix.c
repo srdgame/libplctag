@@ -92,6 +92,16 @@ static int tag_size(plc_tag_p tag);
 static tag_vtable_p logix_vtable = {tag_abort, tag_read, tag_write, tag_get_int, tag_set_int, tag_get_float, tag_set_float, tag_status, tag_size};
 
 
+static int request_destroy(void *req_arg, void *arg2, void *arg3);
+
+
+
+
+
+
+
+
+
 int logix_tag_create(attr attribs, plc_tag_p *ptag)
 {
     int rc = PLCTAG_STATUS_OK;
@@ -136,9 +146,26 @@ int logix_tag_create(attr attribs, plc_tag_p *ptag)
         return rc;
     }
     
+    /* point the data to the right place */
+    tag->data = (uint8_t*)(tag+1);
+
+    /* copy the name */
+    tag->name = str_dup(name);
+    if(!tag->name) {
+        pdebug(DEBUG_WARN,"Tag name cannot be copied!");
+        *ptag = NULL;
+        rc_dec(tag);
+        return rc;
+    }
     
     /* encode the name as a test. */
     rc = cip_encode_tag_name(NULL, NULL, name);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN,"Tag name is malformed or not able to be encoded!");
+        *ptag = NULL;
+        rc_dec(tag);
+        return rc;
+    }
     
     /* get the tag session */
     rc = session_get(path, &tag->session);
@@ -158,10 +185,139 @@ int logix_tag_create(attr attribs, plc_tag_p *ptag)
 
 
 
-
 /*************************************************************************
  *************************** VTable Functions ****************************
  ************************************************************************/
+
+
+
+
+int tag_abort(plc_tag_p tag)
+{
+    logix_tag_p tag = (logix_tag_p)tag_arg;
+
+    /* make sure that no operations are in flight */
+    
+    tag->job = rc_dec(tag->job);
+    
+    return PLCTAG_STATUS_OK;
+}
+
+
+int tag_read(plc_tag_p ptag)
+{
+    logix_tag_p tag = (logix_tag_p)ptag;
+    int rc = tag_status(ptag);
+    request_p req = NULL;
+    int packet_offset = 0;
+    int encoded_length = 0;
+    uint16_t elem_count = 0;
+    uint32_t request_offset = 0;
+    char request_name[128] = {0,}; /* MAGIC */
+    
+    if(rc != PLCTAG_STATUS_OK) {
+        return PLCTAG_ERR_BUSY;
+    }
+
+    if(tag->job) {
+        pdebug(DEBUG_WARN,"An operation is already in progress.");
+        return PLCTAG_ERR_BUSY;
+    }
+    
+    req = (request_p)rc_alloc(sizeof(*req), request_destroy);
+    if(!req) {
+        pdebug(DEBUG_WARN,"Unable to allocate new request!");
+        return PLCTAG_ERR_NO_MEM;
+    }
+    
+    /* set up a request and a job to manage it. */
+    /* set up the CIP Read request */
+    req->data[packet_offset] = AB_EIP_CMD_CIP_READ_FRAG;
+    packet_offset++;
+    
+    /* determine how much room is left. */
+    encoded_length = MAX_PACKET_SIZE - packet_offset;
+    
+    /* encode the name and return the encoded length. */
+    rc = encode_tag_name(&req->data[packet_offset], tag->name, &encoded_length);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN,"Unable to encode tag name!");
+        rc_dec(req);
+        return rc;
+    }
+    packet_offset += encoded_length;
+
+    /* add the count of elements to read. */
+    elem_count = h2le16(tag->elem_count);
+    mem_copy(&req->data[packet_offset], &elem_count, sizeof(elem_count));
+    packet_offset += sizeof(elem_count);
+
+    /* add the byte offset for this request */
+    request_offset = h2le32(0);
+    mem_copy(&req->data[packet_offset], &request_offset, sizeof(request_offset));
+    packet_offset += sizeof(request_offset);
+    
+    req->size = packet_offset;
+    
+    /* now make a job to handle this. */
+    snprintf(request_name, sizeof(request_name), "logix request for tag %s",tag->name);
+    tag->job = job_create(request_name, read_job_func, read_job_cleanup_func, req, rc_inc(tag));
+    if(!tag->job) {
+        pdebug(DEBUG_WARN,"Unable to create new job!");
+        rc_dec(req);
+        
+        /* we acquired an extra reference to the tag for the job, but it never got created so we
+         * need to remove the reference to the tag.
+         */
+        rc_dec(tag);
+    }
+    
+    
+}
+
+
+int tag_write(plc_tag_p tag);
+int tag_get_int(plc_tag_p tag, int offset, int size, int64_t *val);
+int tag_set_int(plc_tag_p tag, int offset, int size, int64_t val);
+int tag_get_float(plc_tag_p tag, int offset, int size, double *val);
+int tag_set_float(plc_tag_p tag, int offset, int size, double *val);
+
+
+int tag_status(plc_tag_p tag)
+{
+    logix_tag_p tag = (logix_tag_p)ptag;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(tag->job) {
+        return PLCTAG_ERR_PENDING;
+    }
+    
+    if(tag->session) {
+        rc = session_get_status(tag->session);
+    }
+    
+    return rc;
+}
+
+
+int tag_size(plc_tag_p tag)
+{
+    logix_tag_p tag = (logix_tag_p)ptag;
+
+    return tag->elem_count * tag->elem_size;
+}
+
+
+
+
+
+
+
+/*************************************************************************
+ *************************** Helper Functions ****************************
+ ************************************************************************/
+
+
 
 
 
@@ -177,34 +333,17 @@ int tag_destroy(void *tag_arg, void *arg2, void *arg3)
      * all operations have been aborted.   We can clean up all the data.
      */
      
-    if(tag->session) {
-        tag->session = rc_dec(session);
-    }
+    tag->session = rc_dec(tag->session);
+    
+    mem_free(tag->name);
+    tag->name = NULL;
     
     return PLCTAG_STATUS_OK;
 }
 
 
 
-int tag_abort(plc_tag_p tag)
-{
-    logix_tag_p tag = (logix_tag_p)tag_arg;
 
-    /* make sure that no operations are in flight */
-    
-    // TODO
-    
-    return PLCTAG_STATUS_OK;
-}
-
-int tag_read(plc_tag_p tag);
-int tag_write(plc_tag_p tag);
-int tag_get_int(plc_tag_p tag, int offset, int size, int64_t *val);
-int tag_set_int(plc_tag_p tag, int offset, int size, int64_t val);
-int tag_get_float(plc_tag_p tag, int offset, int size, double *val);
-int tag_set_float(plc_tag_p tag, int offset, int size, double *val);
-int tag_status(plc_tag_p tag);
-int tag_size(plc_tag_p tag);
 
 
 

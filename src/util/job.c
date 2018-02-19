@@ -64,9 +64,10 @@ static THREAD_FUNC(job_executor);
  ******************************************************************************/
 
 
-job_p job_create(const char *name, callback_func_t job_func,void *arg2, void *arg3)
+job_p job_create(const char *name, callback_func_t job_func, callback_func_t job_cleanup_fun, void *arg2, void *arg3)
 {
 	job_p job = NULL;
+    int rc = PLCTAG_STATUS_OK;
 	
 	if(!name || str_length(name) == 0) {
 		pdebug(DEBUG_WARN,"Job must have a name.");
@@ -84,6 +85,14 @@ job_p job_create(const char *name, callback_func_t job_func,void *arg2, void *ar
 		pdebug(DEBUG_WARN,"Unable to allocate space for job!");
 		return NULL;
 	}
+    
+    /* add the clean up function */
+    rc = rc_add_cleanup(job, job_cleanup_fun, arg2, arg3);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN, "Unable to add job clean up function!");
+        rc_dec(job);
+        return NULL;
+    }
 	
 	/* copy the fields we have. */
     job->name = (char *)(job)+sizeof(struct job_t);

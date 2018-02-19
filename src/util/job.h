@@ -42,7 +42,7 @@ typedef union {
     int int_res;
 } job_result_t;
 
-extern job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *arg3);
+extern job_p job_create(const char *name, callback_func_t job_func, callback_func_t job_cleanup_fun, void *arg2, void *arg3);
 extern int job_get_status(job_p job);
 extern int job_set_status(job_p job, int status);
 extern job_result_t job_get_result(job_p job);

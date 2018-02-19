@@ -41,7 +41,7 @@
 //#define PLCTAG_DATA_BIG_ENDIAN      (1)
 
 extern const char *VERSION;
-extern int VERSION_ARRAY[3];
+extern const int VERSION_ARRAY[3];
 
 extern mutex_p global_library_mutex;
 
