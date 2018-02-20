@@ -48,6 +48,8 @@ extern int job_get_status(job_p job);
 extern int job_set_status(job_p job, int status);
 extern job_result_t job_get_result(job_p job);
 extern int job_set_result(job_p job, job_result_t result);
+extern int job_stop(job_p job);
+extern int job_is_stopping(job_p job);
 
 
 /* called by the library init function */

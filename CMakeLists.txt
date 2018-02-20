@@ -176,7 +176,8 @@ set ( libplctag_SRCS
                      #"${ab_SRC_PATH}/request.h"
                      #"${ab_SRC_PATH}/session.c"
                      #"${ab_SRC_PATH}/session.h"
-                     "${ab_SRC_PATH}/tag.h" )
+                     #"${ab_SRC_PATH}/tag.h" 
+                     )
 
 # set the compiler flags
 FOREACH( lib_src ${libplctag_SRCS} )

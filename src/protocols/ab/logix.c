@@ -251,7 +251,7 @@ int tag_abort(plc_tag_p ptag)
     logix_tag_p tag = (logix_tag_p)ptag;
 
     /* make sure that no operations are in flight */
-    
+    job_abort(tag->job);
     tag->job = rc_dec(tag->job);
     
     return PLCTAG_STATUS_OK;
@@ -285,7 +285,7 @@ int tag_read(plc_tag_p ptag)
     
     /* now make a job to handle this. */
     snprintf(request_name, sizeof(request_name), "read request for tag %s",tag->name);
-    tag->job = job_create(request_name, read_job_func, req, rc_inc(tag));
+    tag->job = job_create(request_name, read_job_func, req, rc_weak_inc(tag));
     if(!tag->job) {
         pdebug(DEBUG_WARN,"Unable to create new job!");
         rc_dec(req);
@@ -328,8 +328,8 @@ int tag_write(plc_tag_p ptag)
     req->state = READ_START;
     
     /* now make a job to handle this. */
-    snprintf(request_name, sizeof(request_name), "read request for tag %s",tag->name);
-    tag->job = job_create(request_name, write_job_func, req, rc_inc(tag));
+    snprintf(request_name, sizeof(request_name), "write request for tag %s",tag->name);
+    tag->job = job_create(request_name, write_job_func, req, rc_weak_inc(tag));
     if(!tag->job) {
         pdebug(DEBUG_WARN,"Unable to create new job!");
         rc_dec(req);
@@ -534,17 +534,7 @@ void tag_destroy(void *tag_arg)
      * If we are here then there are no other references to this tag and
      * all operations have been aborted.   We can clean up all the data.
      */
-     
-    /* flag deletion for anything watching. */
-    tag->deleted = 1;
-     
-    /* wait for job to complete, make sure it is not reference this tag. */
-    if(tag->job) {
-        while(job_get_status(tag->job) != PLCTAG_STATUS_OK) {
-            sleep_ms(1);
-        }
-    } 
-     
+
     tag->job = rc_dec(tag->job);
      
     tag->plc = rc_dec(tag->plc);
@@ -566,12 +556,21 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
 {
     job_p job = (job_p)job_arg;
     req_p req = (req_p)req_arg;
-    logix_tag_p tag = (logix_tag_p)tag_arg;
+    logix_tag_p tag = (logix_tag_p)rc_inc(tag_arg);
     int rc = PLCTAG_STATUS_OK;
     
-    if(tag->deleted) {
-        req->state = READ_STOP;
-        job_set_status(job, PLCTAG_STATUS_OK);
+    /* only set when the job is being destroyed, time to clean up. */
+    if(job_is_terminating(job)) {
+        rc_dec(req_arg);
+        rc_weak_dec(tag_arg);
+        return PLCTAG_STATUS_OK;
+    }
+    
+    /* 
+     * if the tag was being destroyed right as we started, we might not
+     * have a zero ref count yet.   Make sure that we do nothing.
+     */
+    if(!tag) {
         return PLCTAG_STATUS_OK;
     }
     
@@ -640,6 +639,9 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
             pdebug(DEBUG_SPEW,"Unknown state!");
             break;
     }
+    
+    /* done with the tag for now. */
+    rc_dec(tag);
     
     return PLCTAG_STATUS_PENDING;
 }

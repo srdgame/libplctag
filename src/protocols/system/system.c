@@ -51,7 +51,7 @@ struct system_tag_version_t {
 typedef struct system_tag_version_t *system_tag_version_p;
 
 
-static int tag_destroy(void *tag_arg, void *arg2, void *arg3);
+static void tag_destroy(void *tag_arg);
 
 
 static int system_tag_abort(plc_tag_p tag);
@@ -145,25 +145,19 @@ int system_tag_create(attr attribs, plc_tag_p *result)
 
 
 
-int tag_destroy(void *tag_arg, void *arg2, void *arg3)
+void tag_destroy(void *tag_arg)
 {
     plc_tag_p tag = (plc_tag_p)tag_arg;
-    int rc = PLCTAG_STATUS_OK;
     
-    (void)arg2;
-    (void)arg3;
-
     pdebug(DEBUG_INFO,"Starting");
 
     if(!tag) {
-        return PLCTAG_ERR_NULL_PTR;
+        return;
     }
 
-    rc = plc_tag_deinit(tag);
+    plc_tag_deinit(tag);
     
     pdebug(DEBUG_INFO,"Done.");
-    
-    return rc;
 }
 
 

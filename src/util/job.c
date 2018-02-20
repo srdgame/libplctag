@@ -44,9 +44,12 @@ struct job_t {
     job_p next;
     char *name;
     callback_func_t job_func;
+    lock_t lock;
     int status;
     job_result_t result;
-
+    int stop;
+    int is_stopped;
+    
     /* first arg is always the job itself. */
     void *arg2;
     void *arg3;
@@ -67,7 +70,6 @@ static THREAD_FUNC(job_executor);
 job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *arg3)
 {
 	job_p job = NULL;
-    int rc = PLCTAG_STATUS_OK;
 	
 	if(!name || str_length(name) == 0) {
 		pdebug(DEBUG_WARN,"Job must have a name.");
@@ -92,6 +94,7 @@ job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *a
 	
 	job->job_func = job_func;
     job->status = PLCTAG_STATUS_PENDING;
+    job->lock = LOCK_INIT;
     
     /* arg1 is the job itself. */
     job->arg2 = arg2;
@@ -111,6 +114,8 @@ job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *a
 
 int job_get_status(job_p job)
 {
+    int status = PLCTAG_STATUS_OK;
+    
     pdebug(DEBUG_DETAIL,"Starting.");
     
 	if(!job) {
@@ -118,9 +123,19 @@ int job_get_status(job_p job)
 		return PLCTAG_ERR_NULL_PTR;
 	}
     
+    while (!lock_acquire(&job->lock)) {
+        ; /* do nothing, just spin */
+    }
+
+    status = job->status;
+    
+    /* release the lock so that other things can get to it. */
+    lock_release(&job->lock);
+    
+    
     pdebug(DEBUG_DETAIL, "Done");
 
-    return job->status;
+    return status;
 }
 
 
@@ -181,13 +196,51 @@ int job_set_result(job_p job, job_result_t result)
 }
 
 
+int job_stop(job_p job)
+{
+    if(!job) {
+        return !0;
+    }
+    
+    job->stop = 1;
+
+    return job->is_stopped;
+}
+
+int job_is_stopping(job_p job)
+{
+    if(!job) {
+        return !0;
+    }
+    
+    return job->stop;
+}
 
 /*******************************************************************************
  ************************** Internal functions *********************************
  ******************************************************************************/
 
 
+void job_runner(job_p job)
+{
+    int to_be_stopped = 0;
+    
+    if(!job) {
+        return;
+    }
+    
+    to_be_stopped = job->stop;
+    
+    /* do not run stopped jobs. */
+    if(!job->is_stopped) {
+        job->job_func(job, job->arg2, job->arg3);
+    }
 
+    /* if stop is requested, then mark it as stopped. */
+    if(to_be_stopped) {
+        job->is_stopped = 1;
+    }
+}
 
 
 /*  
@@ -208,17 +261,22 @@ void job_destroy(void *job_arg)
         
     if (!job) {
         pdebug(DEBUG_WARN, "Job pointer is null!");
-        return PLCTAG_ERR_NULL_PTR;
     }
 
     pdebug(DEBUG_INFO, "Starting to destroy job %s.", job->name);
+    
+    /* 
+     * call the job one last time, but with terminating set. 
+     * This gives it time to clean up anything it needs to.
+     */
+    while(!job_stop(job)) {
+        sleep_ms(1);  /* spin */
+    }
 
 	/* make sure the job is removed from the queue. */
     job_remove(job);
      	 	 
     pdebug(DEBUG_INFO, "Done.");
-
-    return PLCTAG_STATUS_OK;
 }
 
 
@@ -337,9 +395,7 @@ job_p next_job(job_p job)
 
 THREAD_FUNC(job_executor)
 {
-    int rc = PLCTAG_STATUS_OK;
-    
-	pdebug(DEBUG_INFO,"Job executor thread starting.");
+    pdebug(DEBUG_INFO,"Job executor thread starting.");
     
     (void)arg;
 	
@@ -354,13 +410,8 @@ THREAD_FUNC(job_executor)
             job_p next = next_job(job);
             
             /* we ignore the return code. The job itself is the first argument. */
-            rc = job->job_func(job, job->arg2, job->arg3); 
+            job->job_func(job, job->arg2, job->arg3); 
             
-            /* is the job done? */
-            if(rc == PLCTAG_STATUS_OK) {
-                job_remove(job);
-            }
-
             /* release the reference to the job.  This might clean it up. */
             rc_dec(job);
             

@@ -22,6 +22,7 @@
 #include <platform.h>
 #include <util/debug.h>
 #include <util/hashtable.h>
+#include <util/mem.h>
 #include <util/refcount.h>
 
 
@@ -30,12 +31,12 @@ static volatile hashtable_p resource_by_name = NULL;
 static volatile mutex_p resource_mutex = NULL;
 
 
-static int resource_data_cleanup(void *resource_arg, void *name_arg, void *arg3);
+//static int resource_data_cleanup(void *resource_arg, void *name_arg, void *arg3);
 
 
 
 /* FIXME - this does allocation each time a resource is retrieved. */
-void * resource_get(const char *name)
+void *resource_get(const char *name)
 {
     void * resource = NULL;
     int name_len = 0;
@@ -47,13 +48,13 @@ void * resource_get(const char *name)
 
     pdebug(DEBUG_DETAIL,"Starting with name %s", name);
 
-    name_len = str_length(name) + 1;
+    name_len = str_length(name);
 
     critical_block(resource_mutex) {
         resource = hashtable_get(resource_by_name, (void *)name, name_len);
         if(resource) {
             /* get a strong reference if we can. */
-            resource = rc_inc(resource); /* FIXME - this locks another mutex, can we get inversion? */
+            resource = rc_inc(resource);
 
             if(!resource) {
                 /* clean out the entry */
@@ -69,11 +70,10 @@ void * resource_get(const char *name)
 
 
 
-int resource_put(const char *name, void * resource)
+int resource_put(const char *name, void *resource)
 {
     int name_len = 0;
     int rc = PLCTAG_STATUS_OK;
-    char *dup_name;
 
     if(!name) {
         pdebug(DEBUG_WARN,"Called with null name!");
@@ -82,21 +82,7 @@ int resource_put(const char *name, void * resource)
 
     pdebug(DEBUG_DETAIL,"Starting with name %s", name);
 
-    name_len = str_length(name) + 1;
-
-    dup_name = str_dup(name);
-    if(!dup_name) {
-        pdebug(DEBUG_ERROR,"Unable to create copy of name string!");
-        return PLCTAG_ERR_NO_MEM;
-    }
-
-    /* set up clean up function on resource. */
-    rc = rc_add_cleanup(resource, resource_data_cleanup, dup_name, NULL);
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN,"Unable to add cleanup function to resource!");
-        mem_free(dup_name);
-        return rc;
-    }
+    name_len = str_length(name);
 
     critical_block(resource_mutex) {
         rc = hashtable_put(resource_by_name, (void*)name, name_len, resource);
@@ -157,35 +143,35 @@ char *resource_make_name_impl(int num_args, ...)
 
 
 
-int resource_data_cleanup(void *resource_arg, void *name_arg, void *arg3)
-{
-    void *resource = resource_arg;
-    char *name = name_arg;
-    
-    (void)arg3;
-
-    if(!resource) {
-        pdebug(DEBUG_WARN, "Null resource argument!");
-        
-        if(name) {
-            mem_free(name);
-        }
-        
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    if(!name) {
-        pdebug(DEBUG_WARN,"Resource name pointer is null!");
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    critical_block(resource_mutex) {
-        hashtable_remove(resource_by_name, (void*)name, str_length(name)+1);
-
-        mem_free(name);
-    }
-}
-
+//int resource_data_cleanup(void *resource_arg, void *name_arg, void *arg3)
+//{
+//    void *resource = resource_arg;
+//    char *name = name_arg;
+//    
+//    (void)arg3;
+//
+//    if(!resource) {
+//        pdebug(DEBUG_WARN, "Null resource argument!");
+//        
+//        if(name) {
+//            mem_free(name);
+//        }
+//        
+//        return PLCTAG_ERR_NULL_PTR;
+//    }
+//
+//    if(!name) {
+//        pdebug(DEBUG_WARN,"Resource name pointer is null!");
+//        return PLCTAG_ERR_NULL_PTR;
+//    }
+//
+//    critical_block(resource_mutex) {
+//        hashtable_remove(resource_by_name, (void*)name, str_length(name)+1);
+//
+//        mem_free(name);
+//    }
+//}
+//
 
 
 
