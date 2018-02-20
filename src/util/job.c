@@ -52,7 +52,7 @@ struct job_t {
     void *arg3;
 };
 
-static int job_destroy(void *job_arg, void *arg2, void *arg3);
+static void job_destroy(void *job_arg);
 static int job_remove(job_p job);
 static job_p next_job(job_p job);
 static THREAD_FUNC(job_executor);
@@ -64,7 +64,7 @@ static THREAD_FUNC(job_executor);
  ******************************************************************************/
 
 
-job_p job_create(const char *name, callback_func_t job_func, callback_func_t job_cleanup_fun, void *arg2, void *arg3)
+job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *arg3)
 {
 	job_p job = NULL;
     int rc = PLCTAG_STATUS_OK;
@@ -85,15 +85,7 @@ job_p job_create(const char *name, callback_func_t job_func, callback_func_t job
 		pdebug(DEBUG_WARN,"Unable to allocate space for job!");
 		return NULL;
 	}
-    
-    /* add the clean up function */
-    rc = rc_add_cleanup(job, job_cleanup_fun, arg2, arg3);
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "Unable to add job clean up function!");
-        rc_dec(job);
-        return NULL;
-    }
-	
+    	
 	/* copy the fields we have. */
     job->name = (char *)(job)+sizeof(struct job_t);
 	str_copy(job->name, str_length(name), name);
@@ -210,13 +202,10 @@ int job_set_result(job_p job, job_result_t result)
  * 
  * Memory is freed by the refcount system.
  */
-int job_destroy(void *job_arg, void *arg2, void *arg3)
+void job_destroy(void *job_arg)
 {
     job_p job = job_arg;
-    
-    (void)arg2;
-    (void)arg3;
-
+        
     if (!job) {
         pdebug(DEBUG_WARN, "Job pointer is null!");
         return PLCTAG_ERR_NULL_PTR;
@@ -231,6 +220,7 @@ int job_destroy(void *job_arg, void *arg2, void *arg3)
 
     return PLCTAG_STATUS_OK;
 }
+
 
 
 int job_remove(job_p job)
@@ -251,10 +241,10 @@ int job_remove(job_p job)
             walker = &((*walker)->next);
         }
         
-        /* if we found the job, unlink it and release it. */
+        /* if we found the job, unlink it. */
         if(*walker == job) {
             (*walker) = job->next;
-            rc_dec(job);
+            //rc_dec(job);
         } else {
             pdebug(DEBUG_WARN,"Job not found!");
             rc = PLCTAG_ERR_NOT_FOUND;
@@ -347,6 +337,8 @@ job_p next_job(job_p job)
 
 THREAD_FUNC(job_executor)
 {
+    int rc = PLCTAG_STATUS_OK;
+    
 	pdebug(DEBUG_INFO,"Job executor thread starting.");
     
     (void)arg;
@@ -362,7 +354,12 @@ THREAD_FUNC(job_executor)
             job_p next = next_job(job);
             
             /* we ignore the return code. The job itself is the first argument. */
-            job->job_func(job, job->arg2, job->arg3); 
+            rc = job->job_func(job, job->arg2, job->arg3); 
+            
+            /* is the job done? */
+            if(rc == PLCTAG_STATUS_OK) {
+                job_remove(job);
+            }
 
             /* release the reference to the job.  This might clean it up. */
             rc_dec(job);

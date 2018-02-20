@@ -23,6 +23,7 @@
 #include <platform.h>
 #include <util/refcount.h>
 #include <util/debug.h>
+#include <util/mem.h>
 #include <util/vector.h>
 
 

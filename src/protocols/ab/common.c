@@ -20,6 +20,8 @@
 
 
 
+#include <ctype.h>
+#include <stdlib.h>
 #include <platform.h>
 #include <lib/libplctag.h>
 //#include <lib/tag.h>
@@ -35,9 +37,12 @@
 //#include <ab/connection.h>
 //#include <ab/tag.h>
 //#include <ab/request.h>
+#include <ab/common.h>
 #include <ab/logix.h>
 #include <util/attr.h>
+#include <util/bytes.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 typedef enum {UNKNOWN, LOGIX, MICRO800, MICROLOGIX, SLC, PLC5, PLC5_DHP} plc_type_t;
@@ -130,6 +135,201 @@ plc_type_t get_plc_type(attr attribs)
     
     return UNKNOWN;
 }
+
+
+
+
+
+
+
+
+#ifdef START
+#undef START
+#endif
+#define START 1
+
+#ifdef ARRAY
+#undef ARRAY
+#endif
+#define ARRAY 2
+
+#ifdef DOT
+#undef DOT
+#endif
+#define DOT 3
+
+#ifdef NAME
+#undef NAME
+#endif
+#define NAME 4
+
+/*
+ * cip_encode_tag_name()
+ *
+ * This takes a LGX-style tag name like foo[14].blah and
+ * turns it into an IOI path/string.
+ */
+
+int cip_encode_name(uint8_t **tag_buf,const char *name)
+{
+    uint8_t buf[MAX_CIP_NAME_SIZE + 10] = {0,};
+    int insert_index = 0;
+    const char *p = name;
+    int word_count_index = 0;
+    //uint8_t buf[insert_index] = NULL;
+    int name_len_index = 0;
+    int state;
+
+    /* reserve room for word count for IOI string. */
+    word_count_index = insert_index;
+    insert_index++;
+
+    state = START;
+
+    while(*p) {
+        switch(state) {
+            case START:
+
+                /* must start with an alpha character or _ or :. */
+                if(isalpha(*p) || *p == '_' || *p == ':') {
+                    state = NAME;
+                } else if(*p == '.') {
+                    state = DOT;
+                } else if(*p == '[') {
+                    state = ARRAY;
+                } else {
+                    return 0;
+                }
+
+                break;
+
+            case NAME:
+                buf[insert_index] = 0x91; /* start of ASCII name */
+                insert_index++;
+                name_len_index = insert_index;
+                buf[name_len_index] = 0;
+                insert_index++;
+
+                while(insert_index < MAX_CIP_NAME_SIZE && (isalnum(*p) || *p == '_' || *p == ':')) {
+                    buf[insert_index] = *p;
+                    insert_index++;
+                    p++;
+                    buf[name_len_index]++;
+                }
+
+                /* must pad the name to a multiple of two bytes */
+                if(buf[name_len_index] & 0x01) {
+                    buf[insert_index] = 0;
+                    insert_index++;
+                }
+                
+                if(insert_index >= MAX_CIP_NAME_SIZE) {
+                    pdebug(DEBUG_WARN,"Tag name exceeds maximum allowed CIP name size (256 bytes)!");
+                    return PLCTAG_ERR_BAD_DATA;
+                }
+
+                state = START;
+
+                break;
+
+            case ARRAY:
+                /* move the pointer past the [ character */
+                p++;
+
+                do {
+                    uint32_t val;
+                    char *np = NULL;
+                    val = (uint32_t)strtol(p,&np,0);
+
+                    if(np == p) {
+                        /* we must have a number */
+                        pdebug(DEBUG_WARN,"Bad name segment, expected number!");
+                        *tag_buf = NULL;
+                        return PLCTAG_ERR_BAD_PARAM;
+                    }
+
+                    p = np;
+
+                    if(val > 0xFFFF) {
+                        buf[insert_index] = 0x2A; /* 4-byte value */
+                        insert_index++;  
+                        buf[insert_index] = 0; /* padding */
+                        insert_index++;     
+
+                        /* copy the value in little-endian order */
+                        encode_int32_le(&buf[insert_index], val);
+                        insert_index += sizeof(uint32_t);
+                    } else if(val > 0xFF) {
+                        buf[insert_index] = 0x29; /* 2-byte value */
+                        insert_index++;  
+                        buf[insert_index] = 0; /* padding */
+                        insert_index++;     
+
+                        /* copy the value in little-endian order */
+                        encode_int16_le(&buf[insert_index], val);
+                        insert_index += sizeof(uint16_t);
+                    } else {
+                        buf[insert_index] = 0x28; /* 1-byte value */
+                        insert_index++;  
+                        buf[insert_index] = val; /* value */
+                        insert_index++;     
+                    }
+
+                    if(insert_index >= MAX_CIP_NAME_SIZE) {
+                        pdebug(DEBUG_WARN,"Tag name exceeds maximum allowed CIP name size (256 bytes)!");
+                        return PLCTAG_ERR_BAD_DATA;
+                    }
+
+                    /* eat up whitespace */
+                    while(isspace(*p)) p++;
+                } while(*p == ',');
+
+                if(*p != ']') {
+                    pdebug(DEBUG_WARN, "Unexpected character in tag name after numeric segment '%c'!",*p);
+                    return PLCTAG_ERR_BAD_DATA;
+                }
+
+                p++;
+
+                state = START;
+
+                break;
+
+            case DOT:
+                p++;
+                state = START;
+                break;
+
+            default:
+                /* this should never happen */
+                pdebug(DEBUG_WARN,"Logix error in CIP name encoder!  This state should not happen!");
+                return PLCTAG_ERR_BAD_DATA;
+
+                break;
+        }
+    }
+
+    /* word_count is in units of 16-bit integers, do not
+     * count the word_count value itself.
+     */
+    buf[word_count_index] = (uint8_t)(insert_index-1)/2;
+    
+    /* dry run mode or not? */
+    if(tag_buf) {
+        *tag_buf = mem_alloc(insert_index);
+        
+        if(!*tag_buf) {
+            pdebug(DEBUG_ERROR,"Unable to allocate encoded name buffer!");
+            return PLCTAG_ERR_NO_MEM;
+        }
+        
+        mem_copy(*tag_buf, &buf[0], insert_index);
+    }
+
+    return PLCTAG_STATUS_OK;
+}
+
+
 
 
 

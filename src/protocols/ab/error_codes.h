@@ -18,13 +18,12 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#ifndef __AB_PROTOCOL_ERROR_CODES_H__
-#define __AB_PROTOCOL_ERROR_CODES_H__ 1
+#pragma once
 
 #define AB_ERROR_STR_LONG	(0)
 #define AB_ERROR_STR_SHORT  (1)
 
-extern const char *decode_cip_error(uint8_t *data, int short_or_long);
+extern const char *decode_cip_error_str(uint8_t primary_code, uint32_t secondary_code, int short_or_long);
+extern int decode_cip_error_status(uint8_t primary_code, uint32_t secondary_code);
 
-#endif
 

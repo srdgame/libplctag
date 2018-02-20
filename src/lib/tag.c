@@ -35,6 +35,7 @@
 #include <util/refcount.h>
 #include <util/resource.h>
 #include <ab/create.h>
+#include <system/create.h>
 
 
 /* library visible data */
@@ -117,6 +118,8 @@ LIB_EXPORT const char* plc_tag_decode_error(int rc)
         case PLCTAG_ERR_WINSOCK: return "PLCTAG_ERR_WINSOCK"; break;
         case PLCTAG_ERR_DUPLICATE: return "PLCTAG_ERR_DUPLICATE"; break;
         case PLCTAG_ERR_BUSY: return "PLCTAG_ERR_BUSY"; break;
+        case PLCTAG_ERR_NO_RESOURCES: return "PLCTAG_ERR_NO_RESOURCES"; break;
+        case PLCTAG_ERR_TOO_SHORT:  return "PLCTAG_ERR_TOO_SHORT"; break;
 
         default: return "Unknown error."; break;
     }
@@ -161,9 +164,9 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout)
     protocol = attr_get_str(attribs, "protocol", "NONE");
     if(str_cmp_i(protocol,"ab_eip") == 0 || str_cmp_i(protocol,"ab-eip") == 0) {
         /* some AB PLC. */
-        rc = ab_create_tag(attribs, &tag);
+        rc = ab_tag_create(attribs, &tag);
     } else if(str_cmp_i(protocol,"system") == 0) {
-        rc = system_create_tag(attribs, &tag);
+        rc = system_tag_create(attribs, &tag);
     } else {
         pdebug(DEBUG_WARN, "Unsupported protocol %s!", protocol);
         return PLCTAG_ERR_NOT_IMPLEMENTED;
@@ -1200,7 +1203,7 @@ LIB_EXPORT int plc_tag_set_int8(tag_id id, int offset, int8_t val)
 
 LIB_EXPORT double plc_tag_get_float64(tag_id id, int offset)
 {
-    double res = FLT64_MIN;
+    double res = DBL_MIN;
     int rc = PLCTAG_STATUS_OK;
     plc_tag_p tag = NULL;
 
@@ -1221,7 +1224,7 @@ LIB_EXPORT double plc_tag_get_float64(tag_id id, int offset)
     critical_block(tag->api_mutex) {
         double tmp = 0;
         
-        rc = tag->vtable->get_int(tag, offset, sizeof(double), &tmp);
+        rc = tag->vtable->get_float(tag, offset, sizeof(double), &tmp);
         
         if(rc == PLCTAG_STATUS_OK) {
             res = (double)tmp;
@@ -1257,7 +1260,7 @@ LIB_EXPORT int plc_tag_set_float64(tag_id id, int offset, double val)
     }
 
     critical_block(tag->api_mutex) {
-        rc = tag->vtable->set_int(tag, offset, sizeof(double), val);
+        rc = tag->vtable->set_float(tag, offset, sizeof(double), val);
     }
     
     rc_dec(tag);
@@ -1276,7 +1279,7 @@ LIB_EXPORT int plc_tag_set_float64(tag_id id, int offset, double val)
 
 LIB_EXPORT float plc_tag_get_float32(tag_id id, int offset)
 {
-    float res = FLT32_MIN;
+    float res = FLT_MIN;
     int rc = PLCTAG_STATUS_OK;
     plc_tag_p tag = NULL;
 
@@ -1297,7 +1300,7 @@ LIB_EXPORT float plc_tag_get_float32(tag_id id, int offset)
     critical_block(tag->api_mutex) {
         double tmp = 0;
         
-        rc = tag->vtable->get_int(tag, offset, sizeof(float), &tmp);
+        rc = tag->vtable->get_float(tag, offset, sizeof(float), &tmp);
         
         if(rc == PLCTAG_STATUS_OK) {
             res = (float)tmp;
@@ -1335,7 +1338,7 @@ LIB_EXPORT int plc_tag_set_float32(tag_id id, int offset, float val)
     critical_block(tag->api_mutex) {
         double tmp = (double)val;
         
-        rc = tag->vtable->set_int(tag, offset, sizeof(float), tmp);
+        rc = tag->vtable->set_float(tag, offset, sizeof(float), tmp);
     }
     
     rc_dec(tag);

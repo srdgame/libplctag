@@ -20,37 +20,38 @@
 
 #pragma once
 
-#include <platform.h>
-#include <util/callback.h>
-#include <util/refcount.h>
+#include <stdint.h>
+
+extern int encode_int16_le(uint8_t *buf, int16_t val);
+extern int decode_int16_le(uint8_t *buf, int16_t *val);
+
+extern int encode_int32_le(uint8_t *buf, int32_t val);
+extern int decode_int32_le(uint8_t *buf, int32_t *val);
+
+extern int encode_int64_le(uint8_t *buf, int64_t val);
+extern int decode_int64_le(uint8_t *buf, int64_t *val);
+
+extern int encode_float32_le(uint8_t *buf, float val);
+extern int decode_float32_le(uint8_t *buf, float *val);
+
+extern int encode_float64_le(uint8_t *buf, double val);
+extern int decode_float64_le(uint8_t *buf, double *val);
 
 
-typedef struct job_t *job_p;
+extern int encode_int16_be(uint8_t *buf, int16_t val);
+extern int decode_int16_be(uint8_t *buf, int16_t *val);
 
-/*
- * Create and schedule a job.   Jobs are removed
- * when they are rc_dec'ed.  There will be at least
- * two references to a job when it is running because
- * the runner thread will acquire a reference when it
- * runs a job.
- * 
- * Jobs are ref counted objects and can have additional clean up functions
- * added to them.
- */
+extern int encode_int32_be(uint8_t *buf, int32_t val);
+extern int decode_int32_be(uint8_t *buf, int32_t *val);
 
-typedef union {
-    void *ptr_res;
-    int int_res;
-} job_result_t;
+extern int encode_int64_be(uint8_t *buf, int64_t val);
+extern int decode_int64_be(uint8_t *buf, int64_t *val);
 
-extern job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *arg3);
-extern int job_get_status(job_p job);
-extern int job_set_status(job_p job, int status);
-extern job_result_t job_get_result(job_p job);
-extern int job_set_result(job_p job, job_result_t result);
+extern int encode_float32_be(uint8_t *buf, float val);
+extern int decode_float32_be(uint8_t *buf, float *val);
+
+extern int encode_float64_be(uint8_t *buf, double val);
+extern int decode_float64_be(uint8_t *buf, double *val);
 
 
-/* called by the library init function */
-extern int job_init();
-extern void job_teardown();
 

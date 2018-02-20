@@ -22,7 +22,7 @@
 #define __UTIL_RESOURCE_H__ 1
 
 #include <util/macros.h>
-#include <util/refcount.h>
+//#include <util/refcount.h>
 
 extern void *resource_get(const char *name);
 extern int resource_put(const char *name, void *resource);

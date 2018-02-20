@@ -23,14 +23,18 @@
 #define __UTIL__REFCOUNT_H__ 1
 
 #include <platform.h>
-#include <util/callback.h>
+//#include <util/callback.h>
 
-extern void *rc_alloc2(int size, callback_func_t cleanup_func, void *arg1, void *arg2);
-extern void *rc_alloc1(int size, callback_func_t cleanup_func, void *arg1);
-extern void *rc_alloc(int size, callback_func_t cleanup_func);
+typedef void (*rc_cleanup_func)(void *arg);
+
+//extern void *rc_alloc2(int size, callback_func_t cleanup_func, void *arg1, void *arg2);
+//extern void *rc_alloc1(int size, callback_func_t cleanup_func, void *arg1);
+extern void *rc_alloc(int size, rc_cleanup_func cleanup_func);
 extern void *rc_inc(void *data);
 extern void *rc_dec(void *data);
-extern int rc_add_cleanup(void *data, callback_func_t cleanup_func, void *arg1, void *arg2);
+extern void *rc_weak_inc(void *data);
+extern void *rc_weak_dec(void *data);
+//extern int rc_add_cleanup(void *data, callback_func_t cleanup_func, void *arg1, void *arg2);
 //extern void rc_free(const void *data);
 //extern int rc_count(const void *data);
 
