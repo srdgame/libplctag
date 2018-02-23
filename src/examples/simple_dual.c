@@ -37,8 +37,8 @@
 
 int main()
 {
-    plc_tag tag1 = PLC_TAG_NULL;
-    plc_tag tag2 = PLC_TAG_NULL;
+    tag_id tag1 = PLC_TAG_NULL;
+    tag_id tag2 = PLC_TAG_NULL;
     int rc1,rc2;
     int i;
 

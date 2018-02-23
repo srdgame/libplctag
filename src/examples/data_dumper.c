@@ -34,7 +34,7 @@
 #define DATA_TIMEOUT 1000
 
 
-void log_data(plc_tag tag)
+void log_data(tag_id tag)
 {
     static int log_year = 0;
     static int log_month = 0;
@@ -83,7 +83,7 @@ void log_data(plc_tag tag)
 
 int main(int argc, char **argv)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLC_TAG_NULL;
     int rc;
     int delay = 200; /* ms */
 

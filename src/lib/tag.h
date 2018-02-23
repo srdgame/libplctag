@@ -92,6 +92,7 @@ typedef struct tag_vtable_t *tag_vtable_p;
 
 #define TAG_BASE_STRUCT tag_vtable_p vtable; \
                         mutex_p api_mutex; \
+                        mutex_p external_mutex; \
                         int id; \
                         int64_t read_cache_expire_ms; \
                         int64_t read_cache_duration_ms

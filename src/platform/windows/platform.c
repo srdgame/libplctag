@@ -550,50 +550,6 @@ extern int thread_destroy(thread_p *t)
 
 
 
-/***************************************************************************
- ******************************* Atomic Ops ********************************
- **************************************************************************/
-
-/*
- * lock_acquire
- *
- * Tries to write a non-zero value into the lock atomically.
- *
- * Returns non-zero on success.
- *
- * Warning: do not pass null pointers!
- */
-
-#define ATOMIC_UNLOCK_VAL ((LONG)(0))
-#define ATOMIC_LOCK_VAL ((LONG)(1))
-
-extern int lock_acquire(lock_t *lock)
-{
-    LONG rc = InterlockedExchange(lock, ATOMIC_LOCK_VAL);
-
-    if(rc != ATOMIC_LOCK_VAL) {
-        /* we got the lock */
-        /*pdebug("got lock");*/
-        return 1;
-    } else {
-        /* we did not get the lock */
-        /*pdebug("did not get lock");*/
-        return 0;
-    }
-}
-
-
-extern void lock_release(lock_t *lock)
-{
-    InterlockedExchange(lock, ATOMIC_UNLOCK_VAL);
-    /*pdebug("released lock");*/
-}
-
-
-
-
-
-
 
 
 

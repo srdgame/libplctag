@@ -41,7 +41,7 @@
 
 
 
-int dump_strings(plc_tag tag)
+int dump_strings(tag_id tag)
 {
     char str_data[STRING_DATA_SIZE];
     int str_index;
@@ -73,7 +73,7 @@ int dump_strings(plc_tag tag)
 
 
 
-void update_string(plc_tag tag, int i, char *str)
+void update_string(tag_id tag, int i, char *str)
 {
     int str_len;
     int base_offset = i * ELEM_SIZE;
@@ -102,7 +102,7 @@ int main()
 {
     int i;
     char str[STRING_DATA_SIZE] = {0};
-    plc_tag tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
+    tag_id tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
     int rc;
 
     if(tag < 0) {

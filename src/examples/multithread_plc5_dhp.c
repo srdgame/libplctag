@@ -69,7 +69,7 @@ void *thread_func(void *data)
     int value;
     uint64_t start;
     uint64_t end;
-    plc_tag tag;
+    tag_id tag;
     int iterations = 2000+random_min_max(0,2);
 
     while(iterations>0) {

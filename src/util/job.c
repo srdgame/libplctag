@@ -20,6 +20,7 @@
 
 #include <platform.h>
 #include <lib/libplctag.h>
+#include <util/atomic.h>
 #include <util/debug.h>
 #include <util/job.h>
 #include <util/mem.h>
@@ -40,19 +41,18 @@ static thread_p job_executor_thread = NULL;
 static volatile int library_terminating = 0;
 static job_p jobs = NULL;
 
+
+MAKE_ATOMIC_TYPE(atomic_int, int)
+
+
 struct job_t {
     job_p next;
     char *name;
     callback_func_t job_func;
-    lock_t lock;
-    int status;
-    job_result_t result;
-    int stop;
-    int is_stopped;
-    
-    /* first arg is always the job itself. */
+    void *arg1;
     void *arg2;
     void *arg3;
+    atomic_int running;
 };
 
 static void job_destroy(void *job_arg);
@@ -67,7 +67,7 @@ static THREAD_FUNC(job_executor);
  ******************************************************************************/
 
 
-job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *arg3)
+job_p job_create(const char *name, callback_func_t job_func, void *arg1, void *arg2, void *arg3)
 {
 	job_p job = NULL;
 	
@@ -82,24 +82,21 @@ job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *a
 	}
 	
 	/* allocate it all at once */
-	job = (job_p)rc_alloc(sizeof(struct job_t) + str_length(name) + 1, job_destroy);
+	job = (job_p)mem_alloc(sizeof(struct job_t) + str_length(name) + 1);
 	if(!job) {
 		pdebug(DEBUG_WARN,"Unable to allocate space for job!");
 		return NULL;
 	}
-    	
-	/* copy the fields we have. */
-    job->name = (char *)(job)+sizeof(struct job_t);
-	str_copy(job->name, str_length(name), name);
-	
-	job->job_func = job_func;
-    job->status = PLCTAG_STATUS_PENDING;
-    job->lock = LOCK_INIT;
     
-    /* arg1 is the job itself. */
+    job->name = (char*)(job+1);
+    str_copy(job->name, str_length(name), name);
+    
+    job->arg1 = arg1;
     job->arg2 = arg2;
     job->arg3 = arg3;
-		
+    
+    atomic_int_init(&job->running, 1);
+
 	/* put the job on the list for execution */
 	critical_block(job_mutex) {
 		job->next = jobs;
@@ -110,209 +107,26 @@ job_p job_create(const char *name, callback_func_t job_func, void *arg2, void *a
 }
 
 
-
-
-int job_get_status(job_p job)
+int job_join(job_p job)
 {
-    int status = PLCTAG_STATUS_OK;
-    
-    pdebug(DEBUG_DETAIL,"Starting.");
-    
-	if(!job) {
-		pdebug(DEBUG_WARN,"Job pointer was null!");
-		return PLCTAG_ERR_NULL_PTR;
-	}
-    
-    while (!lock_acquire(&job->lock)) {
-        ; /* do nothing, just spin */
+    if(!job) {
+        pdebug(DEBUG_WARN,"Called with null job pointer!");
+        return PLCTAG_ERR_NULL_PTR;
     }
-
-    status = job->status;
     
-    /* release the lock so that other things can get to it. */
-    lock_release(&job->lock);
+    while(atomic_int_get(&job->running)) {
+        sleep_ms(1);
+    }
     
+    mem_free(job);
     
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return status;
-}
-
-
-
-int job_set_status(job_p job, int status)
-{
-    pdebug(DEBUG_DETAIL,"Starting.");
-    
-	if(!job) {
-		pdebug(DEBUG_WARN,"Job pointer was null!");
-		return PLCTAG_ERR_NULL_PTR;
-	}
-    
-    job->status = status;
-    
-    pdebug(DEBUG_DETAIL, "Done");
-
     return PLCTAG_STATUS_OK;
 }
 
-
-
-job_result_t job_get_result(job_p job)
-{
-    pdebug(DEBUG_DETAIL,"Starting.");
-    
-	if(!job) {
-        job_result_t result;
-        
-        /* zero the whole thing out */
-        mem_set(&result, 0, sizeof(result));
-        
-		pdebug(DEBUG_WARN,"Job pointer was null!");
-        
-		return result;
-	}
-    
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return job->result;
-}
-
-
-int job_set_result(job_p job, job_result_t result)
-{
-    pdebug(DEBUG_DETAIL,"Starting.");
-    
-	if(!job) {
-		pdebug(DEBUG_WARN,"Job pointer was null!");
-		return PLCTAG_ERR_NULL_PTR;
-	}
-    
-    job->result = result;
-    
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return PLCTAG_STATUS_OK;
-}
-
-
-int job_stop(job_p job)
-{
-    if(!job) {
-        return !0;
-    }
-    
-    job->stop = 1;
-
-    return job->is_stopped;
-}
-
-int job_is_stopping(job_p job)
-{
-    if(!job) {
-        return !0;
-    }
-    
-    return job->stop;
-}
 
 /*******************************************************************************
  ************************** Internal functions *********************************
  ******************************************************************************/
-
-
-void job_runner(job_p job)
-{
-    int to_be_stopped = 0;
-    
-    if(!job) {
-        return;
-    }
-    
-    to_be_stopped = job->stop;
-    
-    /* do not run stopped jobs. */
-    if(!job->is_stopped) {
-        job->job_func(job, job->arg2, job->arg3);
-    }
-
-    /* if stop is requested, then mark it as stopped. */
-    if(to_be_stopped) {
-        job->is_stopped = 1;
-    }
-}
-
-
-/*  
- * Callback when a job is destroyed.   Note that we do not acquire a reference within
- * the job queue.  When a job's external references are all released, the job will be
- * destroyed and that removes it from the queue.
- * 
- * In order for a job to remove itself, it must release all external references.   While
- * the job is running, the executor thread holds one final reference.   Once the job function
- * returns, the executor thread will release the reference thus calling job_destroy() and 
- * removing the job from the queue.
- * 
- * Memory is freed by the refcount system.
- */
-void job_destroy(void *job_arg)
-{
-    job_p job = job_arg;
-        
-    if (!job) {
-        pdebug(DEBUG_WARN, "Job pointer is null!");
-    }
-
-    pdebug(DEBUG_INFO, "Starting to destroy job %s.", job->name);
-    
-    /* 
-     * call the job one last time, but with terminating set. 
-     * This gives it time to clean up anything it needs to.
-     */
-    while(!job_stop(job)) {
-        sleep_ms(1);  /* spin */
-    }
-
-	/* make sure the job is removed from the queue. */
-    job_remove(job);
-     	 	 
-    pdebug(DEBUG_INFO, "Done.");
-}
-
-
-
-int job_remove(job_p job)
-{
-    int rc = PLCTAG_STATUS_OK;
-    
-    pdebug(DEBUG_INFO,"Starting.");
-    
-	if(!job) {
-		pdebug(DEBUG_WARN,"Job pointer was null!");
-		return PLCTAG_ERR_NULL_PTR;
-	}
-
-    critical_block(job_mutex) {
-        job_p *walker = &jobs;
-        
-        while(*walker && *walker != job) {
-            walker = &((*walker)->next);
-        }
-        
-        /* if we found the job, unlink it. */
-        if(*walker == job) {
-            (*walker) = job->next;
-            //rc_dec(job);
-        } else {
-            pdebug(DEBUG_WARN,"Job not found!");
-            rc = PLCTAG_ERR_NOT_FOUND;
-        }
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-    
-    return rc;
-}
 
 
 
@@ -369,30 +183,6 @@ void job_teardown(void)
 
 
 
-job_p next_job(job_p job) 
-{
-    job_p result = NULL;
-    
-    critical_block(job_mutex) {
-        if(!job) {
-            result = jobs;
-        } else {
-            result = job->next;
-        }
-        
-        if(result) {
-            /* 
-             * use assignment here so that if the pointer is already 
-             * released by accident we do not keep passing it. 
-             */
-            result = rc_inc(result);
-        }
-    }
-    
-    return result;
-}
-
-
 THREAD_FUNC(job_executor)
 {
     pdebug(DEBUG_INFO,"Job executor thread starting.");
@@ -400,23 +190,48 @@ THREAD_FUNC(job_executor)
     (void)arg;
 	
 	while(!library_terminating) {
-		/*
-		 * This thread is the only one that removes jobs from the queue.  This
-		 * is what makes our brief holding of the lock below safe.
-		 */
-		job_p job = next_job(NULL);
-		
-        while(job) {
-            job_p next = next_job(job);
-            
-            /* we ignore the return code. The job itself is the first argument. */
-            job->job_func(job, job->arg2, job->arg3); 
-            
-            /* release the reference to the job.  This might clean it up. */
-            rc_dec(job);
-            
-            job = next;
-        }
+        job_p job = NULL;
+        int rc = JOB_RUN;
+        int need_next = 1;
+        
+        do {
+            if(need_next) {
+                critical_block(job_mutex) {
+                    if(!job) {
+                        job = jobs;
+                    } else {
+                        job = job->next;
+                    }
+                }
+            }
+
+            if(job) {
+                pdebug(DEBUG_SPEW,"Running job %s", job->name);
+                
+                rc = job->job_func(job->arg1, job->arg2, job->arg3); 
+                
+                if(rc == JOB_STOP) {
+                    critical_block(job_mutex) {
+                        job_p *walker = &jobs;
+                        
+                        while(*walker && *walker != job) {
+                            walker = &((*walker)->next);
+                        }
+                        
+                        /* if we found the job, unlink it. */
+                        if(*walker == job) {
+                            job_p next = job->next;
+                            (*walker) = next;
+                            need_next = 0;
+                            atomic_int_set(&job->running, 0);
+                            job = next;
+                        } else {
+                            pdebug(DEBUG_WARN,"Job not found!");
+                        }
+                    }
+                }
+            }
+        } while(job);
         
         /* give up the CPU */
         sleep_ms(1);

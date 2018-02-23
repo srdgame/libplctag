@@ -28,6 +28,7 @@
 #include <lib/libplctag.h>
 #include <lib/tag.h>
 #include <platform.h>
+#include <util/atomic.h>
 #include <util/attr.h>
 #include <util/debug.h>
 #include <util/hashtable.h>
@@ -201,6 +202,48 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout)
     return tag->id;
 }
 
+
+
+LIB_EXPORT int plc_tag_lock(tag_id id)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = tag_lookup(id);
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    if(!tag) { 
+        pdebug(DEBUG_WARN,"Tag not found.");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    rc = mutex_lock(tag->external_mutex);
+    
+    pdebug(DEBUG_DETAIL, "Done.");
+    
+    return rc;
+}
+
+
+
+
+LIB_EXPORT int plc_tag_unlock(tag_id id)
+{
+    int rc = PLCTAG_STATUS_OK;
+    plc_tag_p tag = tag_lookup(id);
+
+    pdebug(DEBUG_DETAIL, "Starting.");
+
+    if(!tag) { 
+        pdebug(DEBUG_WARN,"Tag not found.");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    rc = mutex_unlock(tag->external_mutex);
+    
+    pdebug(DEBUG_DETAIL, "Done.");
+    
+    return rc;
+}
 
 
 /*
@@ -1373,12 +1416,12 @@ int plc_tag_init(plc_tag_p tag, attr attribs, tag_vtable_p vtable)
         return rc;
     }
 
-//    rc = mutex_create(&tag->external_mut);
-//    if(rc != PLCTAG_STATUS_OK) {
-//        rc_dec(tag);
-//        pdebug(DEBUG_ERROR,"Unable to create external mutex!");
-//        return rc;
-//    }
+    rc = mutex_create(&tag->external_mutex);
+    if(rc != PLCTAG_STATUS_OK) {
+        rc_dec(tag);
+        pdebug(DEBUG_ERROR,"Unable to create external mutex!");
+        return rc;
+    }
 
     /* set up the read cache config. */
     read_cache_ms = attr_get_int(attribs,"read_cache_ms",0);
@@ -1398,6 +1441,10 @@ int plc_tag_init(plc_tag_p tag, attr attribs, tag_vtable_p vtable)
 int plc_tag_deinit(plc_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
+    
+    if(tag->external_mutex) {
+        rc = mutex_destroy(&tag->external_mutex);
+    }
     
     if(tag->api_mutex) {
         rc = mutex_destroy(&tag->api_mutex);
@@ -1513,19 +1560,10 @@ int initialize_modules(void)
 
         pdebug(DEBUG_INFO,"Creating internal tag hashtable.");
         if(rc == PLCTAG_STATUS_OK) {
-            tags = hashtable_create(5); /* FIXME - MAGIC */
+            tags = hashtable_create(100); /* FIXME - MAGIC */
             if(!tags) {
                 pdebug(DEBUG_ERROR,"Unable to create internal tag hashtable!");
                 rc = PLCTAG_ERR_CREATE;
-            }
-        }
-
-        pdebug(DEBUG_INFO,"Setting up resource service.");
-        if(rc == PLCTAG_STATUS_OK) {
-            rc = resource_service_init();
-
-            if(rc != PLCTAG_STATUS_OK) {
-                pdebug(DEBUG_ERROR,"Resource service failed to initialize correctly!");
             }
         }
 
@@ -1535,6 +1573,15 @@ int initialize_modules(void)
 
             if(rc != PLCTAG_STATUS_OK) {
                 pdebug(DEBUG_ERROR,"Job service failed to initialize correctly!");
+            }
+        }
+
+        pdebug(DEBUG_INFO,"Setting up resource service.");
+        if(rc == PLCTAG_STATUS_OK) {
+            rc = resource_service_init();
+
+            if(rc != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_ERROR,"Resource service failed to initialize correctly!");
             }
         }
 
@@ -1564,12 +1611,13 @@ int initialize_modules(void)
 
 void destroy_modules(void)
 {
-    job_teardown();
-    
-    resource_service_teardown();
 
     pdebug(DEBUG_INFO,"Tearing down library.");
 
+    resource_service_teardown();
+
+    job_teardown();
+    
 
     pdebug(DEBUG_INFO,"Releasing internal tag hashtable.");
     hashtable_destroy(tags);

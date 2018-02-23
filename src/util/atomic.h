@@ -20,33 +20,38 @@
 
 #pragma once
 
-#include <platform.h>
-#include <util/callback.h>
-#include <util/refcount.h>
+#ifndef PLCTAG_CAT2
+#define PLCTAG_CAT2(a,b) a##b
+#endif
 
+#ifndef PLCTAG_CAT
+#define PLCTAG_CAT(a,b) PLCTAG_CAT2(a,b)
+#endif
 
-typedef struct job_t *job_p;
+#ifndef LINE_ID
+#define LINE_ID(base) PLCTAG_CAT(base,__LINE__)
+#endif
 
-/*
- * Create and schedule a job.   Jobs are removed
- * when they are rc_dec'ed.  There will be at least
- * two references to a job when it is running because
- * the runner thread will acquire a reference when it
- * runs a job.
- * 
- * Jobs are ref counted objects and can have additional clean up functions
- * added to them.
- */
- 
- 
-typedef enum { JOB_RUN, JOB_STOP } job_status_t; 
+#define spin_block(lock) \
+for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, lock_release(lock))  for(int LINE_ID(__sync_rc_nargle_) = lock_acquire_wait(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
 
+    
+    /* atomic operations */
+#ifdef _WIN32
+typedef volatile long int lock_t;
+#else
+typedef volatile int lock_t;
+#endif 
 
-extern job_p job_create(const char *name, callback_func_t job_func, void *arg1, void *arg2, void *arg3);
-extern int job_join(job_p job);
+#define LOCK_INIT ((lock_t)0)
 
+/* returns non-zero when lock acquired, zero when lock operation failed */
+extern int lock_acquire(lock_t *lock);
+extern void lock_release(lock_t *lock);
+extern int lock_acquire_wait(lock_t *lock);
 
-/* called by the library init function */
-extern int job_init();
-extern void job_teardown();
+#define MAKE_ATOMIC_TYPE(atomic_type, val_type) typedef struct { lock_t lock; val_type val; } atomic_type; \
+inline static val_type atomic_type##_get(atomic_type *atomic_val) { val_type result; spin_block(&(atomic_val->lock)) { result = atomic_val->val; } return result; } \
+inline static void atomic_type##_set(atomic_type *atomic_val, val_type val) { spin_block(&(atomic_val->lock)) { atomic_val->val = val; } } \
+inline static void atomic_type##_init(atomic_type *atomic_val, val_type initial_val) { atomic_val->lock = LOCK_INIT; atomic_val->val = initial_val; }
 

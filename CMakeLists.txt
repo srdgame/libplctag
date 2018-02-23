@@ -117,6 +117,8 @@ MESSAGE("BASE_CXX_FLAGS=${BASE_CXX_FLAGS}")
 
 # set up the library sources
 set ( libplctag_SRCS 
+                     "${util_SRC_PATH}/atomic.c"
+                     "${util_SRC_PATH}/atomic.h"
                      "${util_SRC_PATH}/attr.c"
                      "${util_SRC_PATH}/attr.h"
                      "${util_SRC_PATH}/bytes.c"

@@ -40,7 +40,7 @@
 
 int main()
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLC_TAG_NULL;
     int rc;
     int i;
 

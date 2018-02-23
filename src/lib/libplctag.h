@@ -62,7 +62,7 @@ typedef float real32_t;
 /* handy type definitions */
 typedef int32_t tag_id;
 
-#define plc_tag_NULL ((tag_id)0)
+#define PLC_TAG_NULL ((tag_id)0)
 
 
 
@@ -166,7 +166,7 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout);
  * followed by a call to plc_tag_unlock when you have everything you need from the tag.
  */
 
-//LIB_EXPORT int plc_tag_lock(tag_id tag);
+LIB_EXPORT int plc_tag_lock(tag_id tag);
 
 
 
@@ -177,7 +177,7 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout);
  * tag.
  */
 
-//LIB_EXPORT int plc_tag_unlock(tag_id tag);
+LIB_EXPORT int plc_tag_unlock(tag_id tag);
 
 
 

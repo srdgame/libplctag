@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include <util/atomic.h>
 #include <util/debug.h>
 #include <platform.h>
 

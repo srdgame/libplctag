@@ -46,6 +46,7 @@
 //#include <ab/eip_cip.h>
 #include <ab/common.h>
 #include <ab/error_codes.h>
+#include <util/atomic.h>
 #include <util/attr.h>
 #include <util/bytes.h>
 #include <util/debug.h>
@@ -67,6 +68,8 @@
 //static int check_write_status_unconnected(ab_tag_p tag);
 //int calculate_write_sizes(ab_tag_p tag);
 
+
+MAKE_ATOMIC_TYPE(atomic_int, int)
 
 struct req_t {
     int state;
@@ -107,6 +110,8 @@ struct logix_tag_t {
     uint8_t *encoded_name; /* a counted bytestring */
     uint8_t *type_info;
     plc_p plc;
+    atomic_int abort_op;
+    atomic_int job_status;
     job_p job;
     int deleted;
     int elem_size;
@@ -230,6 +235,9 @@ int logix_tag_create(attr attribs, plc_tag_p *ptag)
         return rc;        
     }
     
+    /* set up the atomic int */
+    atomic_int_init(&tag->abort_op, 0);
+    
     /* everything worked so far, return the tag */
     *ptag = (plc_tag_p)tag;
     
@@ -251,8 +259,11 @@ int tag_abort(plc_tag_p ptag)
     logix_tag_p tag = (logix_tag_p)ptag;
 
     /* make sure that no operations are in flight */
-    job_abort(tag->job);
-    tag->job = rc_dec(tag->job);
+    atomic_int_set(&tag->abort_op, 1);
+    job_join(tag->job);
+    atomic_int_set(&tag->abort_op, 0);
+
+    tag->job = NULL;
     
     return PLCTAG_STATUS_OK;
 }
@@ -283,17 +294,20 @@ int tag_read(plc_tag_p ptag)
     
     req->state = READ_START;
     
+    atomic_int_set(&tag->job_status, PLCTAG_STATUS_PENDING);
+    
     /* now make a job to handle this. */
     snprintf(request_name, sizeof(request_name), "read request for tag %s",tag->name);
-    tag->job = job_create(request_name, read_job_func, req, rc_weak_inc(tag));
+    tag->job = job_create(request_name, read_job_func, rc_weak_inc(tag), req, NULL);
     if(!tag->job) {
         pdebug(DEBUG_WARN,"Unable to create new job!");
+
         rc_dec(req);
         
-        /* we acquired an extra reference to the tag for the job, but it never got created so we
-         * need to remove the reference to the tag.
+        /* we acquired a weak reference to the tag for the job, but it never got created so we
+         * need to remove the weak reference to the tag.
          */
-        rc_dec(tag);
+        rc_weak_dec(tag);
     }
 
     return PLCTAG_STATUS_PENDING;
@@ -325,19 +339,22 @@ int tag_write(plc_tag_p ptag)
         return PLCTAG_ERR_NO_MEM;
     }
     
-    req->state = READ_START;
+    req->state = WRITE_START;
+    
+    atomic_int_set(&tag->job_status, PLCTAG_STATUS_PENDING);
     
     /* now make a job to handle this. */
     snprintf(request_name, sizeof(request_name), "write request for tag %s",tag->name);
-    tag->job = job_create(request_name, write_job_func, req, rc_weak_inc(tag));
+    tag->job = job_create(request_name, write_job_func, rc_weak_inc(tag), req, NULL);
     if(!tag->job) {
         pdebug(DEBUG_WARN,"Unable to create new job!");
+        
         rc_dec(req);
         
-        /* we acquired an extra reference to the tag for the job, but it never got created so we
-         * need to remove the reference to the tag.
+        /* we acquired a weak reference to the tag for the job, but it never got created so we
+         * need to remove the weak reference to the tag.
          */
-        rc_dec(tag);
+        rc_weak_dec(tag);
     }
 
     return PLCTAG_STATUS_PENDING;
@@ -379,7 +396,7 @@ int tag_get_int(plc_tag_p ptag, int offset, int size, int64_t *val)
             break;
         
         default:
-            rc = PLCTAG_ERR_NOT_IMPLEMENTED;
+            rc = PLCTAG_ERR_UNSUPPORTED;
             break;
     }
     
@@ -415,7 +432,7 @@ int tag_set_int(plc_tag_p ptag, int offset, int size, int64_t val)
             break;
             
         default:
-            rc = PLCTAG_ERR_NOT_IMPLEMENTED;
+            rc = PLCTAG_ERR_UNSUPPORTED;
             break;
     }
     
@@ -446,7 +463,7 @@ int tag_get_float(plc_tag_p ptag, int offset, int size, double *val)
             break;
 
         default:
-            rc = PLCTAG_ERR_NOT_IMPLEMENTED;
+            rc = PLCTAG_ERR_UNSUPPORTED;
             break;
     }
     
@@ -476,7 +493,7 @@ int tag_set_float(plc_tag_p ptag, int offset, int size, double val)
             break;
             
         default:
-            rc = PLCTAG_ERR_NOT_IMPLEMENTED;
+            rc = PLCTAG_ERR_UNSUPPORTED;
             break;
     }
     
@@ -492,13 +509,11 @@ int tag_status(plc_tag_p ptag)
     int rc = PLCTAG_STATUS_OK;
     
     if(tag->job) {
-        rc = job_get_status(tag->job);
+        rc = atomic_int_get(&tag->job_status);
         
         if(rc != PLCTAG_STATUS_PENDING) {
             tag_abort(ptag);
         }
-        
-        return rc;
     }
     
     return rc;
@@ -552,27 +567,34 @@ void tag_destroy(void *tag_arg)
 
 
 
-int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
+int read_job_func(void *tag_arg, void *req_arg, void *unused_arg)
 {
-    job_p job = (job_p)job_arg;
-    req_p req = (req_p)req_arg;
     logix_tag_p tag = (logix_tag_p)rc_inc(tag_arg);
+    req_p req = (req_p)req_arg;
     int rc = PLCTAG_STATUS_OK;
+    int abort = atomic_int_get(&tag->abort_op);
+    
+    (void)unused_arg;
+    
     
     /* only set when the job is being destroyed, time to clean up. */
-    if(job_is_terminating(job)) {
+    if(req->state == READ_STOP || !tag || abort) {
+        if(req->state == READ_STOP) {
+            pdebug(DEBUG_INFO, "Read succeeded, job exiting.");
+            atomic_int_set(&tag->job_status,PLCTAG_STATUS_OK);
+        } else if(!tag) {
+            pdebug(DEBUG_INFO,"Tag is being destroyed unexpectedly!");
+        } else {
+            pdebug(DEBUG_WARN,"Operation being aborted!");
+            atomic_int_set(&tag->job_status,PLCTAG_ERR_ABORT);
+        }
+        
         rc_dec(req_arg);
         rc_weak_dec(tag_arg);
-        return PLCTAG_STATUS_OK;
+        
+        return JOB_STOP;
     }
     
-    /* 
-     * if the tag was being destroyed right as we started, we might not
-     * have a zero ref count yet.   Make sure that we do nothing.
-     */
-    if(!tag) {
-        return PLCTAG_STATUS_OK;
-    }
     
     /* what are we doing? */
     switch(req->state) {
@@ -587,7 +609,7 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
             rc = cip_read_request_encode(req, tag);
             if(rc != PLCTAG_STATUS_OK) {
                 pdebug(DEBUG_WARN,"Error while trying to build CIP read packet!");
-                job_set_status(job, rc);
+                atomic_int_set(&tag->job_status, rc);
                 req->state = READ_STOP;
             } else {
                 pdebug(DEBUG_INFO,"Packet built, now trying to queue packet.");
@@ -597,6 +619,14 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
             
         case READ_QUEUE:
             /* send the request to the PLC session */
+            
+            /* FIXME
+             * 
+             * Need to fix the handling of the request.  It is now created with mem_alloc but
+             * needs to be done with rc_alloc because the plc job will maintain a reference to
+             * it so that it can be held and any operation in progress completed before the 
+             * memory goes away.
+             */
             rc = plc_send_request(tag->plc, req);
             if(rc == PLCTAG_STATUS_OK) {
                 pdebug(DEBUG_INFO,"Request queued.  Waiting.");
@@ -606,7 +636,7 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
                 pdebug(DEBUG_SPEW, "Still waiting to queue request.");
             } else {
                 pdebug(DEBUG_WARN,"Error while trying to queue request!");
-                job_set_status(job, rc);
+                atomic_int_set(&tag->job_status, rc);
                 req->state = READ_STOP;
             }
             break;
@@ -618,7 +648,7 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
                 rc = cip_read_response_process(req, tag);
                 
                 /* communicate the status. */
-                job_set_status(job, rc);
+                atomic_int_set(&tag->job_status, rc);
                 
                 if(rc == PLCTAG_STATUS_PENDING) {
                     /* need to keep going. */
@@ -643,7 +673,7 @@ int read_job_func(void *job_arg, void *req_arg, void *tag_arg)
     /* done with the tag for now. */
     rc_dec(tag);
     
-    return PLCTAG_STATUS_PENDING;
+    return JOB_RUN;
 }
 
 
@@ -838,18 +868,34 @@ int cip_read_copy_type_data(uint8_t *data, int *packet_offset, uint8_t **tag_typ
 
 
 
-int write_job_func(void *job_arg, void *req_arg, void *tag_arg)
+int write_job_func(void *tag_arg, void *req_arg, void *unused_arg)
 {
-    job_p job = (job_p)job_arg;
+    logix_tag_p tag = (logix_tag_p)rc_inc(tag_arg);
     req_p req = (req_p)req_arg;
-    logix_tag_p tag = (logix_tag_p)tag_arg;
     int rc = PLCTAG_STATUS_OK;
+    int abort = atomic_int_get(&tag->abort_op);
     
-    if(tag->deleted) {
-        req->state = WRITE_STOP;
-        job_set_status(job, PLCTAG_STATUS_OK);
-        return PLCTAG_STATUS_OK;
+    (void)unused_arg;
+    
+    
+    /* only set when the job is being destroyed, time to clean up. */
+    if(req->state == WRITE_STOP || !tag || abort) {
+        if(req->state == WRITE_STOP) {
+            pdebug(DEBUG_INFO, "Write succeeded, job exiting.");
+            atomic_int_set(&tag->job_status,PLCTAG_STATUS_OK);
+        } else if(!tag) {
+            pdebug(DEBUG_INFO,"Tag is being destroyed unexpectedly!");
+        } else {
+            pdebug(DEBUG_WARN,"Operation being aborted!");
+            atomic_int_set(&tag->job_status,PLCTAG_ERR_ABORT);
+        }
+
+        rc_dec(req_arg);
+        rc_weak_dec(tag_arg);
+        
+        return JOB_STOP;
     }
+    
     
     /* what are we doing? */
     switch(req->state) {
@@ -863,8 +909,8 @@ int write_job_func(void *job_arg, void *req_arg, void *tag_arg)
             /* build the write packet. We start with non-fragmented. */
             rc = cip_write_request_encode(req, tag);
             if(rc != PLCTAG_STATUS_OK) {
-                pdebug(DEBUG_WARN,"Error while trying to build CIP read packet!");
-                job_set_status(job, rc);
+                pdebug(DEBUG_WARN,"Error while trying to build CIP write packet!");
+                atomic_int_set(&tag->job_status, rc);
                 req->state = WRITE_STOP;
             } else {
                 pdebug(DEBUG_INFO,"Packet built, now trying to queue packet.");
@@ -873,7 +919,7 @@ int write_job_func(void *job_arg, void *req_arg, void *tag_arg)
             break;
             
         case WRITE_QUEUE:
-            /* send the request to the PLC session */
+            /* send the request to the PLC session */            
             rc = plc_send_request(tag->plc, req);
             if(rc == PLCTAG_STATUS_OK) {
                 pdebug(DEBUG_INFO,"Request queued.  Waiting.");
@@ -883,7 +929,7 @@ int write_job_func(void *job_arg, void *req_arg, void *tag_arg)
                 pdebug(DEBUG_SPEW, "Still waiting to queue request.");
             } else {
                 pdebug(DEBUG_WARN,"Error while trying to queue request!");
-                job_set_status(job, rc);
+                atomic_int_set(&tag->job_status, rc);
                 req->state = WRITE_STOP;
             }
             break;
@@ -895,29 +941,33 @@ int write_job_func(void *job_arg, void *req_arg, void *tag_arg)
                 rc = cip_write_response_process(req);
                 
                 /* communicate the status. */
-                job_set_status(job, rc);
+                atomic_int_set(&tag->job_status, rc);
                 
                 if(rc == PLCTAG_STATUS_PENDING) {
                     /* need to keep going. */
-                    req->state = READ_START;
+                    req->state = WRITE_START;
                 } else {
                     /* we are done either because we failed or succeeded. */
-                    req->state = READ_STOP;
+                    req->state = WRITE_STOP;
                 }
             }
             break;
             
-        case READ_STOP:
+        case WRITE_STOP:
             /* wait here until we are terminated. */
-            pdebug(DEBUG_SPEW, "We are done with the write.");
+            pdebug(DEBUG_SPEW, "We are done with the read.");
             break;
             
         default:
             pdebug(DEBUG_SPEW,"Unknown state!");
+            req->state = WRITE_STOP;
             break;
     }
     
-    return PLCTAG_STATUS_PENDING;
+    /* done with the tag for now. */
+    rc_dec(tag);
+    
+    return JOB_RUN;
 }
 
 
@@ -962,6 +1012,7 @@ int cip_write_request_encode(req_p req, logix_tag_p tag)
     if(req->offset || remaining_space < tag_size((plc_tag_p)tag)) {
         /* need to fragment. */
         pdebug(DEBUG_DETAIL,"Fragmenting write packet.");
+        
         req->data[command_index] = AB_EIP_CMD_CIP_WRITE_FRAG;
         
         /* add the byte offset for this request */
@@ -1015,7 +1066,10 @@ void request_destroy(void *req_arg)
 {
     (void)req_arg;
     
+    pdebug(DEBUG_INFO,"Starting.");
     /* nothing to do. */
+    
+    pdebug(DEBUG_INFO,"Done.");
 }
 
 

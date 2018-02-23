@@ -37,7 +37,7 @@
 
 int main()
 {
-    plc_tag tag[NUM_TAGS];
+    tag_id tag[NUM_TAGS];
     int rc;
     int i;
 

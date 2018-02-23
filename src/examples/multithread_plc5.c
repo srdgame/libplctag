@@ -24,7 +24,7 @@
 
 
 /* global to cheat on passing it to threads. */
-plc_tag tag;
+tag_id tag;
 
 
 /*

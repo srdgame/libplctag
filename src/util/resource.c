@@ -38,7 +38,8 @@ static volatile mutex_p resource_mutex = NULL;
 /* FIXME - this does allocation each time a resource is retrieved. */
 void *resource_get(const char *name)
 {
-    void * resource = NULL;
+    void *resource = NULL;
+    void *result = NULL;
     int name_len = 0;
 
     if(!name) {
@@ -54,18 +55,18 @@ void *resource_get(const char *name)
         resource = hashtable_get(resource_by_name, (void *)name, name_len);
         if(resource) {
             /* get a strong reference if we can. */
-            resource = rc_inc(resource);
-
-            if(!resource) {
-                /* clean out the entry */
-                hashtable_remove(resource_by_name, (void *)name, name_len);
-            }
+            result = rc_inc(resource);
         }
     }
+    
+    /* was resource pointer invalid? */
+    if(resource && !result) {
+        resource_remove(name);
+    }
 
-    pdebug(DEBUG_DETAIL,"Resource%s found!",(resource ? "": " not"));
+    pdebug(DEBUG_DETAIL,"Resource%s found!",(result ? "": " not"));
 
-    return resource;
+    return result;
 }
 
 
@@ -74,13 +75,21 @@ int resource_put(const char *name, void *resource)
 {
     int name_len = 0;
     int rc = PLCTAG_STATUS_OK;
+    void *tmp_resource = rc_weak_inc(resource);
+
+    pdebug(DEBUG_DETAIL,"Starting");
 
     if(!name) {
         pdebug(DEBUG_WARN,"Called with null name!");
         return PLCTAG_ERR_NULL_PTR;
     }
+    
+    if(!tmp_resource) {
+        pdebug(DEBUG_WARN,"Called with already invalid resource pointer!");
+        return PLCTAG_ERR_NULL_PTR;
+    }
 
-    pdebug(DEBUG_DETAIL,"Starting with name %s", name);
+    pdebug(DEBUG_DETAIL,"Using name %s", name);
 
     name_len = str_length(name);
 
@@ -97,6 +106,30 @@ int resource_put(const char *name, void *resource)
     return rc;
 }
 
+
+int resource_remove(const char *name)
+{
+    void *resource = NULL;
+    int name_len = 0;
+
+    if(!name) {
+        pdebug(DEBUG_WARN,"Called with null name!");
+        return PLCTAG_ERR_NULL_PTR;
+    }
+
+    pdebug(DEBUG_DETAIL,"Starting with name %s", name);
+
+    name_len = str_length(name);
+
+    critical_block(resource_mutex) {
+            /* clean out the entry */
+            resource = hashtable_remove(resource_by_name, (void *)name, name_len);
+    }
+    
+    rc_weak_dec(resource);
+
+    return (resource ? PLCTAG_STATUS_OK : PLCTAG_ERR_NOT_FOUND);
+}
 
 
 
@@ -209,6 +242,10 @@ void resource_service_teardown(void)
     pdebug(DEBUG_INFO,"Tearing down Resource utility.");
 
     pdebug(DEBUG_INFO,"Tearing down resource hashtable.");
+
+// FIXME - clean up everything in the hashtable on termination.    
+//    hashtable_on_each(hashtable_p table, int (*callback_func)(hashtable_p table, void *key, int key_len, void *data));
+//    hashtable_on_each(resource_by_name, resource_teardown_hashtable_cleanup);
 
     hashtable_destroy(resource_by_name);
 

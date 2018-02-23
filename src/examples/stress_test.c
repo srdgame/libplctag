@@ -56,7 +56,7 @@ void *test_dhp(void *data)
     int16_t value;
     uint64_t start;
     uint64_t end;
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLC_TAG_NULL;
     int rc = PLCTAG_STATUS_OK;
     int iteration = 1;
 
@@ -120,7 +120,7 @@ void *test_cip(void *data)
     int32_t value;
     uint64_t start;
     uint64_t end;
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLC_TAG_NULL;
     int rc = PLCTAG_STATUS_OK;
     int iteration = 1;
     int no_destroy = 0;

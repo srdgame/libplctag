@@ -102,15 +102,6 @@ extern int thread_destroy(thread_p *t);
 #define THREAD_RETURN(val) return (void *)val
 
 
-/* atomic operations */
-typedef int lock_t;
-
-#define LOCK_INIT (0)
-
-/* returns non-zero when lock acquired, zero when lock operation failed */
-extern int lock_acquire(lock_t *lock);
-extern void lock_release(lock_t *lock);
-
 /* socket functions */
 typedef struct sock_t *sock_p;
 extern int socket_create(sock_p *s);

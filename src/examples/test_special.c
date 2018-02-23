@@ -27,8 +27,8 @@
 
 void test_version(void)
 {
-    plc_tag tag = PLC_TAG_NULL;
-    int i;
+    tag_id tag = 0;
+    int i = 0;
     char ver[16] = {0,};
 
     fprintf(stderr,"Testing version tag.\n");
@@ -55,7 +55,7 @@ void test_version(void)
 
 void test_debug(void)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLC_TAG_NULL;
     int old_debug, new_debug;
 
     fprintf(stderr,"Testing debug tag.\n");

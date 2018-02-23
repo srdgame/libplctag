@@ -20,5 +20,5 @@
 
 #pragma once
 
-typedef void (*callback_func_t)(void *arg1, void *arg2, void *arg3);
+typedef int (*callback_func_t)(void *arg1, void *arg2, void *arg3);
 

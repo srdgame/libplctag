@@ -151,7 +151,7 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLC_TAG_NULL;
     int is_write = 0;
     uint32_t u_val;
     int32_t i_val;
