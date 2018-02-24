@@ -32,7 +32,7 @@
 #include <lib/libplctag.h>
 #include <ab/ab_common.h>
 #include <ab/pccc.h>
-#include <ab/eip_dhp_pccc.h>
+#include <ab/plc5_dhp.h>
 #include <ab/tag.h>
 #include <ab/connection.h>
 #include <ab/session.h>
@@ -40,16 +40,31 @@
 #include <util/debug.h>
 
 
+
+static int tag_status(ab_tag_p tag);
+static int tag_read_start(ab_tag_p tag);
+static int tag_write_start(ab_tag_p tag);
+
+struct tag_vtable_t plc5_dhp_vtable = { (tag_tickler_func)NULL, 
+                                        (tag_vtable_func)ab_tag_abort, 
+                                        (tag_vtable_func)ab_tag_destroy, 
+                                        (tag_vtable_func)tag_read_start, 
+                                        (tag_vtable_func)tag_status, 
+                                        (tag_vtable_func)tag_write_start };
+
+
+
+
 static int check_read_status(ab_tag_p tag);
 static int check_write_status(ab_tag_p tag);
 
 /*
- * eip_dhp_pccc_tag_status
+ * tag_status
  *
  * PCCC/DH+-specific status.  This functions as a "tickler" routine
  * to check on the completion of async requests.
  */
-int eip_dhp_pccc_tag_status(ab_tag_p tag)
+int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     int session_rc = PLCTAG_STATUS_OK;
@@ -103,11 +118,11 @@ int eip_dhp_pccc_tag_status(ab_tag_p tag)
 
 
 /*
- * eip_dhp_pccc_tag_read_start
+ * tag_read_start
  *
  * This does not support multiple request fragments.
  */
-int eip_dhp_pccc_tag_read_start(ab_tag_p tag)
+int tag_read_start(ab_tag_p tag)
 {
     pccc_dhp_co_req *pccc;
     uint8_t *data;
@@ -228,7 +243,7 @@ int eip_dhp_pccc_tag_read_start(ab_tag_p tag)
 
 
 
-int eip_dhp_pccc_tag_write_start(ab_tag_p tag)
+int tag_write_start(ab_tag_p tag)
 {
     pccc_dhp_co_req *pccc;
     uint8_t *data;

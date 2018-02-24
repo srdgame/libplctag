@@ -36,7 +36,7 @@ extern "C"
 #include <ab/ab_defs.h>
 #include <ab/common.h>
 #include <ab/pccc.h>
-#include <ab/eip_dhp_pccc.h>
+#include <ab/plc5_dhp.h>
 
 
 static int check_read_status(ab_tag_p tag);

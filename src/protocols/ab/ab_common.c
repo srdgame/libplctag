@@ -35,7 +35,7 @@
 #include <ab/eip.h>
 #include <ab/logix.h>
 #include <ab/plc5.h>
-#include <ab/eip_dhp_pccc.h>
+#include <ab/plc5_dhp.h>
 #include <ab/session.h>
 #include <ab/connection.h>
 #include <ab/tag.h>
@@ -58,18 +58,12 @@
 #define DEFAULT_RETRY_INTERVAL (300)
 
 
-/* vtables for different kinds of tags */
-struct tag_vtable_t default_vtable = {0}/*= { NULL, ab_tag_destroy, NULL, NULL }*/;
-//struct tag_vtable_t cip_vtable = {0}/*= { ab_tag_abort, ab_tag_destroy, eip_cip_tag_read_start, eip_cip_tag_status, eip_cip_tag_write_start }*/;
-//struct tag_vtable_t plc_vtable = {0}/*= { ab_tag_abort, ab_tag_destroy, eip_pccc_tag_read_start, eip_pccc_tag_status, eip_pccc_tag_write_start }*/;
-struct tag_vtable_t plc_dhp_vtable = {0}/*= { ab_tag_abort, ab_tag_destroy, eip_dhp_pccc_tag_read_start, eip_dhp_pccc_tag_status, eip_dhp_pccc_tag_write_start}*/;
+/* default vtable */
+struct tag_vtable_t default_vtable = { (tag_tickler_func)NULL, (tag_vtable_func)NULL, (tag_vtable_func)ab_tag_destroy, (tag_vtable_func)NULL, (tag_vtable_func)NULL, (tag_vtable_func)NULL };
 
 
 /* forward declarations*/
 tag_vtable_p set_tag_vtable(ab_tag_p tag);
-//int setup_session_mutex(void);
-
-/* declare this so that the library initializer can pass it to atexit() */
 
 /*
  * Public functions.
@@ -82,16 +76,6 @@ int ab_init(void)
 
     pdebug(DEBUG_INFO,"Initializing AB protocol library.");
 
-    /* set up the vtables. */
-    default_vtable.destroy  = (tag_vtable_func)ab_tag_destroy;
-
-    
-    plc_dhp_vtable.abort    = (tag_vtable_func)ab_tag_abort;
-    plc_dhp_vtable.destroy  = (tag_vtable_func)ab_tag_destroy;
-    plc_dhp_vtable.read     = (tag_vtable_func)eip_dhp_pccc_tag_read_start;
-    plc_dhp_vtable.status   = (tag_vtable_func)eip_dhp_pccc_tag_status;
-    plc_dhp_vtable.write    = (tag_vtable_func)eip_dhp_pccc_tag_write_start;
-    
     /* set up session IO thread etc. */
     rc = session_setup();
 
@@ -325,7 +309,7 @@ tag_vtable_p set_tag_vtable(ab_tag_p tag)
     switch(tag->protocol_type) {
         case AB_PROTOCOL_PLC:
             if(tag->use_dhp_direct) {
-                return &plc_dhp_vtable;
+                return &plc5_dhp_vtable;
             } else {
                 return &plc5_vtable;
             }
