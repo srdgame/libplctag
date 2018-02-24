@@ -24,13 +24,14 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <float.h>
+#include <platform.h>
 #include <lib/libplctag.h>
 #include <lib/tag.h>
-#include <platform.h>
-#include <util/attr.h>
-#include <util/debug.h>
 #include <ab/ab.h>
 #include <system/system.h>
+#include <util/attr.h>
+#include <util/debug.h>
+#include <util/liveobj.h>
 
 
 
@@ -94,11 +95,7 @@ static volatile plc_tag_p tag_map[MAX_TAG_ENTRIES + 1] = {0,};
 static volatile mutex_p tag_api_mutex[MAX_TAG_ENTRIES + 1] = {0,};
 
 static volatile thread_p tickler_thread = NULL;
-#ifdef _WIN32
-DWORD __stdcall tag_tickler(LPVOID not_used);
-#else
-void* tag_tickler(void* not_used);
-#endif
+THREAD_FUNC(tag_tickler);
 
 
 #define api_block(tag_id)                                              \
@@ -145,6 +142,12 @@ int initialize_modules(void)
             return rc;
         }
         
+        rc = liveobj_setup();
+        if(rc != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_INFO,"Unable to create tag thread!");
+            return rc;
+        }
+                
         /* initialize the AB protocol */
         if(rc == PLCTAG_STATUS_OK) {
             rc = ab_init();
@@ -166,39 +169,6 @@ int initialize_modules(void)
     return rc;
 }
 
-int lib_init(void)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_INFO,"Setting up global library data.");
-
-    pdebug(DEBUG_INFO,"Initializing library global mutex.");
-
-    /* first see if the mutex is there. */
-    if (!global_library_mutex) {
-        rc = mutex_create((mutex_p*)&global_library_mutex);
-
-        if (rc != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
-        }
-    }
-
-    /* initialize the mutex for API protection */
-    for(int i=0; i < (MAX_TAG_ENTRIES + 1); i++) {
-        rc = mutex_create((mutex_p*)&tag_api_mutex[i]);
-    }
-    
-    /* start the tickler thread. */
-    rc = thread_create((thread_p*)&tickler_thread, tag_tickler, 32*1024, NULL);
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to create tag thread!");
-        return rc;
-    }
-    
-    pdebug(DEBUG_INFO,"Done.");
-
-    return rc;
-}
 
 
 void destroy_modules(void)
@@ -209,6 +179,8 @@ void destroy_modules(void)
 
     pdebug(DEBUG_INFO,"Tearing down library.");
 
+    liveobj_teardown();
+    
     /* wait for the thread to die */
     pdebug(DEBUG_INFO,"Stopping tickler thread.");
     thread_join(tickler_thread);
@@ -1881,13 +1853,9 @@ tag_create_function find_tag_create_func(attr attributes)
 
 
 
-#ifdef _WIN32
-DWORD __stdcall tag_tickler(LPVOID not_used)
-#else
-void* tag_tickler(void* not_used)
-#endif
+THREAD_FUNC(tag_tickler)
 {
-    (void) not_used;
+    (void) arg;
     
     /* garbage code to stop compiler from whining about unused variables */
     pdebug(DEBUG_DETAIL,"Starting.");
@@ -1912,10 +1880,6 @@ void* tag_tickler(void* not_used)
 
     thread_stop();
 
-    /* FIXME -- this should be factored out as a platform dependency.*/
-#ifdef _WIN32
-    return (DWORD)0;
-#else
-    return NULL;
-#endif
+    
+    THREAD_RETURN(NULL);
 }

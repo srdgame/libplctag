@@ -87,8 +87,23 @@ extern int mutex_destroy(mutex_p *m);
  * unlock the mutex.  It will NOT break out of any surrounding loop outside the
  * synchronized block.
  */
+
+#ifndef PLCTAG_CAT2
+#define PLCTAG_CAT2(a,b) a##b
+#endif
+
+#ifndef PLCTAG_CAT
+#define PLCTAG_CAT(a,b) PLCTAG_CAT2(a,b)
+#endif
+
+#ifndef LINE_ID
+#define LINE_ID(base) PLCTAG_CAT(base,__LINE__)
+#endif
+
+
 #define critical_block(lock) \
-for(int __sync_flag_nargle_##__LINE__ = 1; __sync_flag_nargle_##__LINE__ ; __sync_flag_nargle_##__LINE__ = 0, mutex_unlock(lock))  for(int __sync_rc_nargle_##__LINE__ = mutex_lock(lock); __sync_rc_nargle_##__LINE__ == PLCTAG_STATUS_OK && __sync_flag_nargle_##__LINE__ ; __sync_flag_nargle_##__LINE__ = 0)
+for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, mutex_unlock(lock))  for(int LINE_ID(__sync_rc_nargle_) = mutex_lock(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
+
 
 /* thread functions/defs */
 typedef struct thread_t *thread_p;
@@ -99,6 +114,8 @@ extern int thread_join(thread_p t);
 extern int thread_destroy(thread_p *t);
 
 #define THREAD_LOCAL __thread
+#define THREAD_FUNC(tfunc) void* tfunc(void* arg)
+#define THREAD_RETURN(val) return ((void*)val)
 
 /* atomic operations */
 typedef int lock_t;
@@ -108,6 +125,10 @@ typedef int lock_t;
 /* returns non-zero when lock acquired, zero when lock operation failed */
 extern int lock_acquire(lock_t *lock);
 extern void lock_release(lock_t *lock);
+extern int lock_acquire_spin(lock_t *lock);
+
+#define spin_block(lock) \
+for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, lock_release(lock))  for(int LINE_ID(__sync_rc_nargle_) = lock_acquire_spin(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
 
 /* socket functions */
 typedef struct sock_t *sock_p;

@@ -57,10 +57,6 @@ extern int check_tag_name(ab_tag_p tag, const char *name);
 extern int check_mutex(int debug);
 
 
-//#ifdef _WIN32
-//DWORD __stdcall request_handler_func(LPVOID not_used);
-//#else
-//void *request_handler_func(void *not_used);
-//#endif
+#define LIVEOBJ_TYPE_SESSION (1)
 
 #endif

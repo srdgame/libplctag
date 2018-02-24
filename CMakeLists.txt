@@ -154,6 +154,8 @@ set ( libplctag_SRCS
                      "${util_SRC_PATH}/attr.h"
                      "${util_SRC_PATH}/debug.c"
                      "${util_SRC_PATH}/debug.h"
+                     "${util_SRC_PATH}/liveobj.c"
+                     "${util_SRC_PATH}/liveobj.h"
                      "${util_SRC_PATH}/macros.h"
                      "${util_SRC_PATH}/refcount.c"
                      "${util_SRC_PATH}/refcount.h"

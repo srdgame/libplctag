@@ -574,7 +574,7 @@ extern int thread_destroy(thread_p *t)
 
 #define ATOMIC_LOCK_VAL (1)
 
-extern int lock_acquire(lock_t *lock)
+int lock_acquire(lock_t *lock)
 {
     int rc = __sync_lock_test_and_set((int*)lock, ATOMIC_LOCK_VAL);
 
@@ -590,11 +590,26 @@ extern int lock_acquire(lock_t *lock)
 }
 
 
-extern void lock_release(lock_t *lock)
+void lock_release(lock_t *lock)
 {
     __sync_lock_release((int*)lock);
     /*pdebug("released lock");*/
 }
+
+
+
+
+int lock_acquire_spin(lock_t *lock)
+{
+    while(!lock_acquire(lock)) {
+        ; /* do nothing but spin. */
+    }
+    
+    return PLCTAG_STATUS_OK;
+}
+
+
+
 
 
 /***************************************************************************

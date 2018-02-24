@@ -19,15 +19,39 @@
  ***************************************************************************/
 
 
-#pragma once
-
 #include <platform.h>
+#include <util/bitmap.h>
+#include <util/debug.h>
 
-typedef void *rc_ptr;
-typedef void (*rc_cleanup_func)(void *arg);
+struct bitmap_t {
+    int size;
+    uint64_t data[];
+};
 
-extern rc_ptr rc_alloc(int size, rc_cleanup_func cleanup_func);
-extern rc_ptr rc_inc(void *data);
-extern rc_ptr rc_dec(void *data);
-extern rc_ptr rc_weak_inc(void *data);
-extern rc_ptr rc_weak_dec(void *data);
+
+bitmap_p bitmap_create(int size)
+{
+    bitmap_p result = NULL;
+    int size_in_bits = 0;
+    int size_in_bytes = 0;
+    
+    if(size < 0) {
+        pdebug(DEBUG_WARN,"Size must be positive!");
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+    
+    /* round size up to the nearest chunk of 64 bits. */
+    size_in_bytes = (size + (64 - (size % 64)))/8;
+    
+    result = mem_alloc(sizeof(struct bitmap_t) + size_in_bytes);
+    if(!result) {
+        pdebug(DEBUG_ERROR,"Unable to allocate bitmap!");
+        return PLCTAG_ERR_NO_MEM;
+    }
+    
+}
+int bitmap_set(bitmap_p bm, int index, int val);
+int bitmap_get(bitmap_p bm, int index);
+int bitmap_find_first(bitmap_p bm, int start_index, int val);
+int bitmap_destroy(bitmap_p bm);
+

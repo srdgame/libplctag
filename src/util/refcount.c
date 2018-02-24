@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -19,16 +19,11 @@
  ***************************************************************************/
 
 
-#include <lib/libplctag.h>
 #include <platform.h>
-#include <util/refcount.h>
+#include <lib/libplctag.h>
 #include <util/debug.h>
+#include <util/refcount.h>
 
-
-
-/*
- * New API
- */
 
 
 
@@ -38,51 +33,47 @@
  */
 
 struct rc {
-    int count;
+    int strong_count;
+    int weak_count;
     lock_t lock;
-    void (*cleanup_func)(void *data);
-
-    union {
-        uint8_t dummy_u8;
-        uint16_t dummy_u16;
-        uint32_t dummy_u32;
-        uint64_t dummy_u64;
-        double dummy_double;
-        void *dummy_ptr;
-        void (*dummy_func)(void);
-    } dummy_align[];
+    rc_cleanup_func cleanup_func;
 };
+
+/* round up to the nearest 32 byte chunk */
+#define RC_HEADER_SIZE (((int)((sizeof(struct rc)+31)/32))*32)
+
+#define DATA_FROM_HEADER(rc) ((void*)(((uint8_t *)rc) + RC_HEADER_SIZE))
+#define HEADER_FROM_DATA(data)  ((struct rc *)(((uint8_t *)data) - RC_HEADER_SIZE))
 
 
 /*
- * rc_alloc
+ * rc_alloc3
  *
  * Allocate memory, replacing mem_alloc, and prepend reference counting data to the
  * memory block.
- *
- * The clean up function must free the passed data using rc_free.   This will be a pointer into
- * the middle of a malloc'ed block of memory.
  */
 
 
-void *rc_alloc(int size, void (*cleanup_func)(void *data))
+void *rc_alloc(int size, rc_cleanup_func cleanup_func)
 {
-    int total_size = size + sizeof(struct rc);
+    int total_size = size + RC_HEADER_SIZE;  /* allocate a 32-byte chunk to align the "real" data. */
     struct rc *rc = mem_alloc(total_size);
 
     pdebug(DEBUG_DETAIL,"Allocating %d byte from a request of %d with result pointer %p",total_size, size, rc);
 
     if(!rc) {
         pdebug(DEBUG_WARN,"Unable to allocate sufficient memory!");
-        return rc;
+        
+        return NULL;
     }
-
-    rc->count = 1;
+    
+    rc->strong_count = 1;
+    rc->weak_count = 0;
     rc->lock = LOCK_INIT;
     rc->cleanup_func = cleanup_func;
-
+        
     /* return the address _past_ the rc struct. */
-    return (rc+1);
+    return DATA_FROM_HEADER(rc);
 }
 
 
@@ -92,10 +83,11 @@ void *rc_alloc(int size, void (*cleanup_func)(void *data))
  * my_struct->some_field = rc_inc(rc_obj);
  */
 
-void *rc_inc(const void *data)
+void *rc_inc(void *data)
 {
     struct rc *rc = NULL;
-    int count = 0;
+    int strong_count = 0;
+    int weak_count = 0;
 
     if(!data) {
         pdebug(DEBUG_WARN,"Null pointer passed!");
@@ -106,23 +98,31 @@ void *rc_inc(const void *data)
      * The struct rc we want is before the memory pointer we get.
      * Thus we cast and subtract.
      */
-    rc = ((struct rc *)data) - 1;
+    rc = HEADER_FROM_DATA(data);
 
     /* loop until we get the lock */
     while (!lock_acquire(&rc->lock)) {
         ; /* do nothing, just spin */
     }
 
-    rc->count++;
-    count = rc->count;
+    if(rc->strong_count > 0) {
+        rc->strong_count++;
+    } else {
+        pdebug(DEBUG_WARN,"rc_inc() called on object, %p, that was already released!", data);
+    }
+    
+    strong_count = rc->strong_count;
+    weak_count = rc->weak_count;
 
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_DETAIL,"Ref count is now %d",count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak)", data, strong_count, weak_count);
 
-    return (void *)data;
+    return (void *)(strong_count == 0 ? NULL : data);
 }
+
+
 
 /*
  * return NULL.
@@ -134,10 +134,11 @@ void *rc_inc(const void *data)
  * and the block itself using rc_free();
  */
 
-void *rc_dec(const void *data)
+void *rc_dec(void *data)
 {
     struct rc *rc = NULL;
-    int count;
+    int strong_count = 0;
+    int weak_count = 0;
 
     if(!data) {
         pdebug(DEBUG_WARN,"Null pointer passed!");
@@ -150,202 +151,148 @@ void *rc_dec(const void *data)
      *
      * This gets rid of the "const" part!
      */
-    rc = ((struct rc *)data) - 1;
+    rc = HEADER_FROM_DATA(data);
 
     /* loop until we get the lock */
     while (!lock_acquire(&rc->lock)) {
         ; /* do nothing, just spin */
     }
 
-    rc->count--;
-
-    if(rc->count < 0) {
-        rc->count = 0;
+    if(rc->strong_count > 0) {
+        rc->strong_count--;
+    } else {
+        pdebug(DEBUG_WARN,"rc_dec() called on object that was already deleted!");
     }
 
-    count = rc->count;
+    /* total count is what matters. */
+    strong_count = rc->strong_count;
+    weak_count = rc->weak_count;
 
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_DETAIL,"Refcount is now %d", count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak)", data, strong_count, weak_count);
 
-    if(count <= 0) {
+    if((strong_count + weak_count) <= 0) {
         pdebug(DEBUG_DETAIL,"Calling cleanup function.");
 
-        rc->cleanup_func((void *)data);
+        rc->cleanup_func(data);
+                
+        /* all done, free the memory for the object itself. */
+        mem_free(rc);
     }
 
     return NULL;
 }
 
 
-void rc_free(const void *data)
+
+
+
+/*
+ * return the original pointer or NULL.
+ * This is for usage like:
+ * my_struct->some_field = rc_weak_inc(rc_obj);
+ * 
+ * Return NULL if the object is already dead due to the
+ * strong_count being zero.
+ */
+
+void *rc_weak_inc(void *data)
 {
     struct rc *rc = NULL;
+    int strong_count = 0;
+    int weak_count = 0;
 
     if(!data) {
         pdebug(DEBUG_WARN,"Null pointer passed!");
-        return;
+        return (void *)data;
     }
 
     /*
      * The struct rc we want is before the memory pointer we get.
      * Thus we cast and subtract.
-     *
-     * This gets rid of the "const" part!
      */
-    rc = ((struct rc *)data) - 1;
-
-    mem_free(rc);
-}
-
-
-int rc_count(const void *data)
-{
-   struct rc *rc = NULL;
-    int count = 0;
-
-    if(!data) {
-        pdebug(DEBUG_WARN,"Null pointer passed!");
-        return count;
-    }
-
-    /*
-     * The struct rc we want is before the memory pointer we get.
-     * Thus we cast and subtract.
-     *
-     * This gets rid of the "const" part!
-     */
-    rc = ((struct rc *)data) - 1;
+    rc = HEADER_FROM_DATA(data);
 
     /* loop until we get the lock */
     while (!lock_acquire(&rc->lock)) {
         ; /* do nothing, just spin */
     }
 
-    count = rc->count;
+    if(rc->strong_count > 0) {
+        rc->weak_count++;
+    } else {
+        pdebug(DEBUG_WARN,"rc_weak_inc() called on object, %p, that was already released!", data);
+    }
+
+    strong_count = rc->strong_count;
+    weak_count = rc->weak_count;
 
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_DETAIL,"Refcount is %d", count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak)", data, strong_count, weak_count);
 
-    return count;
+    return (void *)(strong_count == 0 ? NULL : data);
 }
 
 
 
+/*
+ * return NULL.
+ * This is for usage like:
+ * my_struct->some_field = rc_weak_dec(rc_obj);
+ */
 
+void *rc_weak_dec(void *data)
+{
+    struct rc *rc = NULL;
+    int strong_count = 0;
+    int weak_count = 0;
 
+    if(!data) {
+        pdebug(DEBUG_WARN,"Null pointer passed!");
+        return NULL;
+    }
 
+    /*
+     * The struct rc we want is before the memory pointer we get.
+     * Thus we cast and subtract.
+     *
+     * This gets rid of the "const" part!
+     */
+    rc = HEADER_FROM_DATA(data);
 
+    /* loop until we get the lock */
+    while (!lock_acquire(&rc->lock)) {
+        ; /* do nothing, just spin */
+    }
 
+    if(rc->weak_count > 0) {
+        rc->weak_count--;
+    } else {
+        pdebug(DEBUG_WARN,"rc_weak_dec() called on object that was already deleted!");
+    }
 
+    /* total count is what matters. */
+    strong_count = rc->strong_count;
+    weak_count = rc->weak_count;
 
+    /* release the lock so that other things can get to it. */
+    lock_release(&rc->lock);
 
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong),  %d (weak)", data, strong_count, weak_count);
 
+    if((strong_count + weak_count) <= 0) {
+        pdebug(DEBUG_DETAIL,"Calling cleanup function.");
 
+        rc->cleanup_func(data);
+        
+        /* all done, free the memory for the object itself. */
+        mem_free(rc);
+    }
 
-
-
-
-
-
-
-//refcount refcount_init(int count, void *data, void (*delete_func)(void *data))
-//{
-    //refcount rc;
-
-    //pdebug(DEBUG_INFO, "Initializing refcount struct with count=%d", count);
-
-    //rc.count = count;
-    //rc.lock = LOCK_INIT;
-    //rc.data = data;
-    //rc.delete_func = delete_func;
-
-    //return rc;
-//}
-
-///* must be called with a mutex held! */
-//int refcount_acquire(refcount *rc)
-//{
-    //int count;
-
-    //if(!rc) {
-        //return PLCTAG_ERR_NULL_PTR;
-    //}
-
-    ///* loop until we get the lock */
-    //while (!lock_acquire(&rc->lock)) {
-        //; /* do nothing, just spin */
-    //}
-
-    //rc->count++;
-    //count = rc->count;
-
-    ///* release the lock so that other things can get to it. */
-    //lock_release(&rc->lock);
-
-    //pdebug(DEBUG_INFO,"Ref count is now %d",count);
-
-    //return count;
-//}
-
-
-//int refcount_release(refcount *rc)
-//{
-    //int count;
-
-    //if(!rc) {
-        //return PLCTAG_ERR_NULL_PTR;
-    //}
-
-    ///* loop until we get the lock */
-    //while (!lock_acquire(&rc->lock)) {
-        //; /* do nothing, just spin */
-    //}
-
-    //rc->count--;
-
-    //if(rc->count < 0) {
-        //rc->count = 0;
-    //}
-
-    //count = rc->count;
-
-    ///* release the lock so that other things can get to it. */
-    //lock_release(&rc->lock);
-
-    //pdebug(DEBUG_INFO,"Refcount is now %d", count);
-
-    //if(count <= 0) {
-        //pdebug(DEBUG_INFO,"Calling clean up function.");
-
-        //rc->delete_func(rc->data);
-    //}
-
-    //return count;
-//}
-
-//int refcount_get_count(refcount *rc)
-//{
-    //int count;
-
-    //if(!rc) {
-        //return PLCTAG_ERR_NULL_PTR;
-    //}
-
-    ///* loop until we get the lock */
-    //while (!lock_acquire(&rc->lock)) {
-        //; /* do nothing, just spin */
-    //}
-
-    //count = rc->count;
-
-    ///* release the lock so that other things can get to it. */
-    //lock_release(&rc->lock);
-
-    //return count;
-//}
+    return NULL;
+}
 

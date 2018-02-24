@@ -22,12 +22,17 @@
 #pragma once
 
 #include <platform.h>
+#include <util/refcount.h>
 
-typedef void *rc_ptr;
-typedef void (*rc_cleanup_func)(void *arg);
+#define LIVEOBJ_TYPE_FREE (0)
 
-extern rc_ptr rc_alloc(int size, rc_cleanup_func cleanup_func);
-extern rc_ptr rc_inc(void *data);
-extern rc_ptr rc_dec(void *data);
-extern rc_ptr rc_weak_inc(void *data);
-extern rc_ptr rc_weak_dec(void *data);
+typedef void (*liveobj_func)(rc_ptr obj);
+typedef int (*liveobj_find_func)(rc_ptr obj, int type, void *arg);
+
+extern int liveobj_add(rc_ptr obj, int type);
+extern rc_ptr liveobj_get(int id);
+extern int liveobj_remove(int id);
+extern void *liveobj_find(liveobj_find_func finder, void *arg);
+
+extern int liveobj_setup();
+extern void liveobj_teardown();

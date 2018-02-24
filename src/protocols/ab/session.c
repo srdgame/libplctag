@@ -33,6 +33,7 @@
 #include <ab/request.h>
 #include <ab/eip.h>
 #include <util/debug.h>
+#include <util/refcount.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -46,10 +47,10 @@ mutex_p global_session_mut = NULL;
 
 /* local variables. */
 
-static ab_session_p sessions = NULL;
+//static ab_session_p sessions = NULL;
 
 /* request/response handling thread */
-static thread_p io_handler_thread = NULL;
+//static thread_p io_handler_thread = NULL;
 
 
 
@@ -57,27 +58,29 @@ static ab_session_p session_create_unsafe(const char* host, int gw_port);
 static int session_init(ab_session_p session);
 static int add_session_unsafe(ab_session_p n);
 //~ static int add_session(ab_session_p s);
-static int remove_session_unsafe(ab_session_p n);
+//static int remove_session_unsafe(ab_session_p n);
 //~ static int remove_session(ab_session_p s);
-static ab_session_p find_session_by_host_unsafe(const char  *t);
+static int find_session_by_host_unsafe(rc_ptr obj, int type, void *host_arg);
 //~ static int session_add_tag_unsafe(ab_session_p session, ab_tag_p tag);
 //~ static int session_add_tag(ab_session_p session, ab_tag_p tag);
 //~ static int session_remove_tag_unsafe(ab_session_p session, ab_tag_p tag);
 //~ static int session_remove_tag(ab_session_p session, ab_tag_p tag);
 static int session_connect(ab_session_p session);
 //~ static int session_cleanup_unsafe(ab_session_p session);
-static void session_cleanup(void *session);
+static void session_cleanup(rc_ptr session);
 //~ static int session_is_empty(ab_session_p session);
 static int session_register(ab_session_p session);
 static int session_unregister_unsafe(ab_session_p session);
 
 
 
-#ifdef _WIN32
-DWORD __stdcall request_handler_func(LPVOID not_used);
-#else
-void *request_handler_func(void *not_used);
-#endif
+//#ifdef _WIN32
+//DWORD __stdcall request_handler_func(LPVOID not_used);
+//#else
+//void *request_handler_func(void *not_used);
+//#endif
+/* forward reference to the session handler function. */
+static void session_handler(ab_session_p session);
 
 static int session_check_incoming_data_unsafe(ab_session_p session);
 //static int request_check_outgoing_data_unsafe(ab_session_p session, ab_request_p req);
@@ -87,10 +90,6 @@ static int session_check_incoming_data_unsafe(ab_session_p session);
  * session_get_new_seq_id_unsafe
  *
  * A wrapper to get a new session sequence ID.  Not thread safe.
- *
- * Note that this is dangerous to use in threaded applications
- * because 32-bit processors will not implement a 64-bit
- * integer as an atomic entity.
  */
 
 uint64_t session_get_new_seq_id_unsafe(ab_session_p sess)
@@ -118,7 +117,7 @@ uint64_t session_get_new_seq_id(ab_session_p sess)
 }
 
 
-static int connection_is_usable(ab_connection_p connection)
+static int connection_is_usable_unsafe(ab_connection_p connection)
 {
     if(!connection) {
         return 0;
@@ -149,7 +148,7 @@ ab_connection_p session_find_connection_by_path_unsafe(ab_session_p session,cons
      * We do not want to use connections that are used exclusively by one tag.
      * We want to use connections that have the same path as the tag.
      */
-    while (connection && !connection_is_usable(connection) && str_cmp_i(connection->path, path) != 0) {
+    while (connection && !connection_is_usable_unsafe(connection) && str_cmp_i(connection->path, path) != 0) {
         connection = connection->next;
     }
 
@@ -260,7 +259,7 @@ int session_find_or_create(ab_session_p *tag_session, attr attribs)
     const char* session_gw = attr_get_str(attribs, "gateway", "");
     int session_gw_port = attr_get_int(attribs, "gateway_port", AB_EIP_DEFAULT_PORT);
     ab_session_p session = AB_SESSION_NULL;
-    int new_session = 0;
+    //int new_session = 0;
     int shared_session = attr_get_int(attribs, "share_session", 1); /* share the session by default. */
     int rc = PLCTAG_STATUS_OK;
 
@@ -269,7 +268,8 @@ int session_find_or_create(ab_session_p *tag_session, attr attribs)
     critical_block(global_session_mut) {
         /* if we are to share sessions, then look for an existing one. */
         if (shared_session) {
-            session = find_session_by_host_unsafe(session_gw);
+            /* this returns a strong reference */
+            session = liveobj_find(find_session_by_host_unsafe, (void *)session_gw);
         } else {
             /* no sharing, create a new one */
             session = AB_SESSION_NULL;
@@ -282,30 +282,9 @@ int session_find_or_create(ab_session_p *tag_session, attr attribs)
             if (session == AB_SESSION_NULL) {
                 pdebug(DEBUG_WARN, "unable to create or find a session!");
                 rc = PLCTAG_ERR_BAD_GATEWAY;
-            } else {
-                new_session = 1;
-            }
+            } 
         } else {
             pdebug(DEBUG_DETAIL,"Reusing existing session.");
-        }
-    }
-
-    /*
-     * do this OUTSIDE the mutex in order to let other threads not block if
-     * the session creation process blocks.
-     */
-
-    if(new_session) {
-        rc = session_init(session);
-
-        if(rc != PLCTAG_STATUS_OK) {
-            /* failed to set up the session! */
-            //session_cleanup(session);
-            session = rc_dec(session);
-            session = AB_SESSION_NULL;
-        } else {
-            /* save the status */
-            session->status = rc;
         }
     }
 
@@ -317,26 +296,20 @@ int session_find_or_create(ab_session_p *tag_session, attr attribs)
     return rc;
 }
 
-int add_session_unsafe(ab_session_p n)
+int add_session_unsafe(ab_session_p session)
 {
     pdebug(DEBUG_DETAIL, "Starting");
 
-    if (!n) {
-        return PLCTAG_ERR_NULL_PTR;
+    session->liveobj_id = liveobj_add(session, LIVEOBJ_TYPE_SESSION);
+    
+    if(session->liveobj_id < 0) {
+        /* error! */
+        pdebug(DEBUG_WARN,"Unable to add session to live objects!");
     }
-
-    n->prev = NULL;
-    n->next = sessions;
-
-    if (sessions) {
-        sessions->prev = n;
-    }
-
-    sessions = n;
 
     pdebug(DEBUG_DETAIL, "Done");
 
-    return PLCTAG_STATUS_OK;
+    return session->liveobj_id;
 }
 
 int add_session(ab_session_p s)
@@ -354,59 +327,43 @@ int add_session(ab_session_p s)
     return rc;
 }
 
-int remove_session_unsafe(ab_session_p n)
-{
-    ab_session_p tmp;
+//int remove_session_unsafe(ab_session_p session)
+//{
+//    int status = PLCTAG_STATUS_OK;
+//
+//    pdebug(DEBUG_DETAIL, "Starting");
+//
+//    if (!session) {
+//        return PLCTAG_ERR_NULL_PTR;
+//    }
+//    
+//    status = liveobj_remove(session->liveobj_id);
+//    
+//    if(status != PLCTAG_STATUS_OK) {
+//        pdebug(DEBUG_WARN,"Session already removed?");
+//        return PLCTAG_ERR_NOT_FOUND;
+//    }
+//
+//    pdebug(DEBUG_DETAIL, "Done");
+//
+//    return status;
+//}
 
-    pdebug(DEBUG_DETAIL, "Starting");
-
-    if (!n || !sessions) {
-        return 0;
-    }
-
-    tmp = sessions;
-
-    while (tmp && tmp != n)
-        tmp = tmp->next;
-
-    if (!tmp || tmp != n) {
-        pdebug(DEBUG_WARN, "Session not found!");
-        return PLCTAG_ERR_NOT_FOUND;
-    }
-
-    if (n->next) {
-        n->next->prev = n->prev;
-    }
-
-    if (n->prev) {
-        n->prev->next = n->next;
-    } else {
-        sessions = n->next;
-    }
-
-    n->next = NULL;
-    n->prev = NULL;
-
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return PLCTAG_STATUS_OK;
-}
-
-int remove_session(ab_session_p s)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL, "Starting.");
-
-    critical_block(global_session_mut) {
-        rc = remove_session_unsafe(s);
-    }
-
-    pdebug(DEBUG_DETAIL, "Done.");
-
-    return rc;
-}
-
+//int remove_session(ab_session_p s)
+//{
+//    int rc = PLCTAG_STATUS_OK;
+//
+//    pdebug(DEBUG_DETAIL, "Starting.");
+//
+//    critical_block(global_session_mut) {
+//        rc = remove_session_unsafe(s);
+//    }
+//
+//    pdebug(DEBUG_DETAIL, "Done.");
+//
+//    return rc;
+//}
+//
 
 static int session_match_valid(const char *host, ab_session_p session)
 {
@@ -426,26 +383,26 @@ static int session_match_valid(const char *host, ab_session_p session)
 }
 
 
-ab_session_p find_session_by_host_unsafe(const char* t)
+int find_session_by_host_unsafe(rc_ptr obj, int type, void *host_arg)
 {
-    ab_session_p tmp;
+    ab_session_p session;
+    
+    pdebug(DEBUG_SPEW,"Starting.");
 
-    tmp = sessions;
-
-    while (tmp && !session_match_valid(t, tmp)) {
-        tmp = tmp->next;
+    if(type == LIVEOBJ_TYPE_SESSION) {
+        session = (ab_session_p)obj;
+        
+        if(session_match_valid((const char*)host_arg, session)) {
+            /* this is the right one! */
+            pdebug(DEBUG_INFO,"Found session!");
+            
+            return PLCTAG_STATUS_OK;
+        }
     }
-
-    if (!tmp) {
-        return (ab_session_p)NULL;
-    }
-
-    if(tmp) {
-        /* found the session, so increase the ref count. */
-        rc_inc(tmp);
-    }
-
-    return tmp;
+    
+    pdebug(DEBUG_SPEW,"Done.");
+    
+    return PLCTAG_ERR_NOT_FOUND;
 }
 
 
@@ -466,6 +423,9 @@ ab_session_p session_create_unsafe(const char* host, int gw_port)
         pdebug(DEBUG_WARN, "Error allocating new session.");
         return AB_SESSION_NULL;
     }
+    
+    /* set the function to handle this object */
+    session->session_obj_func = (liveobj_func)session_handler;
 
     str_copy(session->host, MAX_SESSION_HOST, host);
 
@@ -505,7 +465,7 @@ ab_session_p session_create_unsafe(const char* host, int gw_port)
     session->retry_interval = SESSION_DEFAULT_RESEND_INTERVAL_MS;
 
     /* FIXME */
-    pdebug(DEBUG_DETAIL, "Refcount is now %d", rc_count(session));
+    //pdebug(DEBUG_DETAIL, "Refcount is now %d", rc_count(session));
 
     /* add the new session to the list. */
     add_session_unsafe(session);
@@ -582,10 +542,10 @@ int session_connect(ab_session_p session)
 }
 
 /* must have the session mutex held here */
-void session_cleanup(void *session_arg)
+void session_cleanup(rc_ptr session_arg)
 {
     ab_session_p session = session_arg;
-    int really_destroy = 1;
+    ab_request_p req = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 
@@ -594,44 +554,19 @@ void session_cleanup(void *session_arg)
 
         return;
     }
+    
+    /* not needed, liveobj already handles this. */
+    //remove_session_unsafe(session);
 
-    /*
-     * Work around the race condition here.  Another thread could have looked up the
-     * session before this thread got to this point, but after this thread saw the
-     * session's ref count go to zero.  So, we need to check again after preventing
-     * other threads from getting a reference.
-     */
+    /* unregister and close the socket. */
+    session_unregister_unsafe(session);
 
-    critical_block(global_session_mut) {
-        if(rc_count(session) > 0) {
-            pdebug(DEBUG_WARN,"Another thread got a reference to this session before it could be deleted.  Aborting deletion");
-            really_destroy = 0;
-            break;
-        }
+    /* remove any remaining requests, they are dead */
+    req = session->requests;
 
-        /* still good, so remove the session from the list so no one else can reference it. */
-        remove_session_unsafe(session);
-    }
-
-    /*
-     * if we are really destroying the session then we know that this is
-     * the last reference.  So, we can use the unsafe variants.
-     */
-    if(really_destroy) {
-        ab_request_p req;
-
-        /* unregister and close the socket. */
-        session_unregister_unsafe(session);
-
-        /* remove any remaining requests, they are dead */
+    while(req) {
+        session_remove_request_unsafe(session, req);
         req = session->requests;
-
-        while(req) {
-            session_remove_request_unsafe(session, req);
-            req = session->requests;
-        }
-
-        rc_free(session);
     }
 
     pdebug(DEBUG_INFO, "Done.");
@@ -1165,13 +1100,13 @@ int session_setup()
         return rc;
     }
 
-    /* create the background IO handler thread */
-    rc = thread_create((thread_p*)&io_handler_thread, request_handler_func, 32*1024, NULL);
-
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to create request handler thread!");
-        return rc;
-    }
+//    /* create the background IO handler thread */
+//    rc = thread_create((thread_p*)&io_handler_thread, request_handler_func, 32*1024, NULL);
+//
+//    if(rc != PLCTAG_STATUS_OK) {
+//        pdebug(DEBUG_INFO,"Unable to create request handler thread!");
+//        return rc;
+//    }
 
     pdebug(DEBUG_INFO,"Done.");
 
@@ -1183,9 +1118,9 @@ void session_teardown()
 {
     pdebug(DEBUG_INFO,"Terminating IO thread.");
 
-    /* wait for the thread to die */
-    thread_join(io_handler_thread);
-    thread_destroy((thread_p*)&io_handler_thread);
+//    /* wait for the thread to die */
+//    thread_join(io_handler_thread);
+//    thread_destroy((thread_p*)&io_handler_thread);
 
     pdebug(DEBUG_INFO,"Freeing global session mutex.");
     /* clean up the mutex */
@@ -1583,92 +1518,100 @@ static int session_check_outgoing_data_unsafe(ab_session_p session)
 }
 
 
-static void process_session_tasks_unsafe(ab_session_p session)
+void session_handler(ab_session_p session)
 {
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_SPEW, "Checking for things to do with session %p", session);
+    
+    /* fake exceptions */
+    do {
+        /* do we need to initialize the session? */
+        if(!session->registered) {
+            session->status = session_init(session);
 
-
-    if(!session->registered) {
-        return;
-    }
-
-    /* check for incoming data. */
-    rc = session_check_incoming_data_unsafe(session);
-
-    if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "Error when checking for incoming session data! %d", rc);
-        /* FIXME - do something useful with this error */
-    }
-
-    /* check for incoming data. */
-    rc = session_check_outgoing_data_unsafe(session);
-
-    if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "Error when checking for outgoing session data! %d", rc);
-        /* FIXME - do something useful with this error */
-    }
-}
-
-
-
-
-#ifdef _WIN32
-DWORD __stdcall request_handler_func(LPVOID not_used)
-#else
-void* request_handler_func(void* not_used)
-#endif
-{
-    ab_session_p cur_sess;
-
-    /* garbage code to stop compiler from whining about unused variables */
-    pdebug(DEBUG_DETAIL,"Starting with arg %p",not_used);
-
-    while (!library_terminating) {
-        /* we need the mutex */
-        if (global_session_mut == NULL) {
-            pdebug(DEBUG_ERROR, "global_session_mut is NULL!");
-            break;
+            if(session->status != PLCTAG_STATUS_OK) {
+                /* failed to set up the session! */
+                break;
+            }
+        }
+            
+        /* check for incoming data. */
+        rc = session_check_incoming_data_unsafe(session);
+        if (rc != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_WARN, "Error when checking for incoming session data! %d", rc);
+            /* FIXME - do something useful with this error */
         }
 
-        /*pdebug(DEBUG_INFO,"entering critical block %p",global_session_mut);*/
-        critical_block(global_session_mut) {
-            /*
-             * loop over the sessions.  For each session, see if we can read some
-             * data.  If we can, read it in and try to update a request.  If the
-             * session has outstanding requests that need to be sent, try to send
-             * them.
-             */
-
-            cur_sess = sessions;
-
-            while (cur_sess) {
-                /* process incoming and outgoing data for the session. */
-                process_session_tasks_unsafe(cur_sess);
-
-                /*  move to the next session */
-                /*pdebug(DEBUG_INFO,"cur_sess=%p, cur_sess->next=%p",cur_sess, cur_sess->next);*/
-                cur_sess = cur_sess->next;
-            }
-        } /* end synchronized block */
-        /*pdebug(DEBUG_INFO,"leaving critical block %p",global_session_mut);*/
-
-        /*
-         * give up the CPU. 1ms is not really going to happen.  Usually it is more based on the OS
-         * default time and is usually around 10ms.  But, this sleep usually causes context switch.
-         */
-        sleep_ms(1);
-    }
-
-    thread_stop();
-
-    /* FIXME -- this should be factored out as a platform dependency.*/
-#ifdef _WIN32
-    return (DWORD)0;
-#else
-    return NULL;
-#endif
+        /* check for incoming data. */
+        rc = session_check_outgoing_data_unsafe(session);
+        if (rc != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_WARN, "Error when checking for outgoing session data! %d", rc);
+            /* FIXME - do something useful with this error */
+        }
+    } while(0);
+    
+    //rc_dec(session);
 }
 
 
+
+
+//#ifdef _WIN32
+//DWORD __stdcall request_handler_func(LPVOID not_used)
+//#else
+//void* request_handler_func(void* not_used)
+//#endif
+//{
+//    ab_session_p cur_sess;
+//
+//    /* garbage code to stop compiler from whining about unused variables */
+//    pdebug(DEBUG_DETAIL,"Starting with arg %p",not_used);
+//
+//    while (!library_terminating) {
+//        /* we need the mutex */
+//        if (global_session_mut == NULL) {
+//            pdebug(DEBUG_ERROR, "global_session_mut is NULL!");
+//            break;
+//        }
+//
+//        /*pdebug(DEBUG_INFO,"entering critical block %p",global_session_mut);*/
+//        critical_block(global_session_mut) {
+//            /*
+//             * loop over the sessions.  For each session, see if we can read some
+//             * data.  If we can, read it in and try to update a request.  If the
+//             * session has outstanding requests that need to be sent, try to send
+//             * them.
+//             */
+//
+//            cur_sess = sessions;
+//
+//            while (cur_sess) {
+//                /* process incoming and outgoing data for the session. */
+//                process_session_tasks_unsafe(cur_sess);
+//
+//                /*  move to the next session */
+//                /*pdebug(DEBUG_INFO,"cur_sess=%p, cur_sess->next=%p",cur_sess, cur_sess->next);*/
+//                cur_sess = cur_sess->next;
+//            }
+//        } /* end synchronized block */
+//        /*pdebug(DEBUG_INFO,"leaving critical block %p",global_session_mut);*/
+//
+//        /*
+//         * give up the CPU. 1ms is not really going to happen.  Usually it is more based on the OS
+//         * default time and is usually around 10ms.  But, this sleep usually causes context switch.
+//         */
+//        sleep_ms(1);
+//    }
+//
+//    thread_stop();
+//
+//    /* FIXME -- this should be factored out as a platform dependency.*/
+//#ifdef _WIN32
+//    return (DWORD)0;
+//#else
+//    return NULL;
+//#endif
+//}
+//
+//

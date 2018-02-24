@@ -427,7 +427,7 @@ int recv_forward_open_resp(ab_connection_p connection, ab_request_p req)
 void connection_cleanup(void *connection_arg)
 {
     ab_connection_p connection = connection_arg;
-    int really_destroy = 1;
+    //int really_destroy = 1;
 
     pdebug(DEBUG_INFO, "Starting.");
 
@@ -444,11 +444,11 @@ void connection_cleanup(void *connection_arg)
      * reference and thus cannot delete this connection yet.
      */
     critical_block(global_session_mut) {
-        if(rc_count(connection) > 0) {
-            pdebug(DEBUG_WARN,"Some other thread took a reference to this connection before we could delete it.  Aborting deletion.");
-            really_destroy = 0;
-            break;
-        }
+//        if(rc_count(connection) > 0) {
+//            pdebug(DEBUG_WARN,"Some other thread took a reference to this connection before we could delete it.  Aborting deletion.");
+//            really_destroy = 0;
+//            break;
+//        }
 
         /* make sure the session does not reference the connection */
         session_remove_connection_unsafe(connection->session, connection);
@@ -456,15 +456,13 @@ void connection_cleanup(void *connection_arg)
         /* now no one can get a reference to this connection. */
     }
 
-    if(really_destroy) {
-        /* clean up connection with the PLC, ignore return code, we can't do anything about it. */
-        connection_close(connection);
+    /* clean up connection with the PLC, ignore return code, we can't do anything about it. */
+    connection_close(connection);
 
-        connection->session = rc_dec(connection->session);
+    connection->session = rc_dec(connection->session);
 
-        /* do final clean up */
-        rc_free(connection);
-    }
+    /* do final clean up */
+    //rc_free(connection);
 
     pdebug(DEBUG_INFO, "Done.");
 

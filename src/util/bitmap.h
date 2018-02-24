@@ -23,11 +23,11 @@
 
 #include <platform.h>
 
-typedef void *rc_ptr;
-typedef void (*rc_cleanup_func)(void *arg);
+typedef struct bitmap_t *bitmap_p;
 
-extern rc_ptr rc_alloc(int size, rc_cleanup_func cleanup_func);
-extern rc_ptr rc_inc(void *data);
-extern rc_ptr rc_dec(void *data);
-extern rc_ptr rc_weak_inc(void *data);
-extern rc_ptr rc_weak_dec(void *data);
+extern bitmap_p bitmap_create(int size);
+extern int bitmap_set(bitmap_p bm, int index, int val);
+extern int bitmap_get(bitmap_p bm, int index);
+extern int bitmap_find_first(bitmap_p bm, int start_index, int val);
+extern int bitmap_destroy(bitmap_p bm);
+

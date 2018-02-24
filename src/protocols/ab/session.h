@@ -30,7 +30,10 @@
 
 #include <ab/ab_common.h>
 #include <ab/request.h>
+#include <util/debug.h>
+#include <util/liveobj.h>
 #include <util/refcount.h>
+
 
 #define MAX_SESSION_HOST    (128)
 
@@ -59,6 +62,12 @@
 #define SESSION_MAX_UNCONNECTED_REQUESTS_IN_FLIGHT (8)
 
 struct ab_session_t {
+    /* required for live objects */
+    liveobj_func session_obj_func;
+    int liveobj_id;
+    
+    int session_initialized;
+    
     ab_session_p next;
     ab_session_p prev;
 

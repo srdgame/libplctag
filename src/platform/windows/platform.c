@@ -634,7 +634,7 @@ extern int thread_destroy(thread_p *t)
 #define ATOMIC_UNLOCK_VAL ((LONG)(0))
 #define ATOMIC_LOCK_VAL ((LONG)(1))
 
-extern int lock_acquire(lock_t *lock)
+int lock_acquire(lock_t *lock)
 {
     LONG rc = InterlockedExchange(lock, ATOMIC_LOCK_VAL);
 
@@ -650,12 +650,24 @@ extern int lock_acquire(lock_t *lock)
 }
 
 
-extern void lock_release(lock_t *lock)
+void lock_release(lock_t *lock)
 {
     InterlockedExchange(lock, ATOMIC_UNLOCK_VAL);
     /*pdebug("released lock");*/
 }
 
+
+
+
+
+int lock_acquire_spin(lock_t *lock)
+{
+    while(!lock_acquire(lock)) {
+        ; /* do nothing but spin. */
+    }
+    
+    return PLCTAG_STATUS_OK;
+}
 
 
 

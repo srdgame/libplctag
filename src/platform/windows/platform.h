@@ -133,9 +133,18 @@ extern int mutex_destroy(mutex_p *m);
  * synchronized block.
  */
 
+#ifndef PLCTAG_CAT2
 #define PLCTAG_CAT2(a,b) a##b
+#endif
+
+#ifndef PLCTAG_CAT
 #define PLCTAG_CAT(a,b) PLCTAG_CAT2(a,b)
+#endif
+
+#ifndef LINE_ID
 #define LINE_ID(base) PLCTAG_CAT(base,__LINE__)
+#endif
+
 
 #define critical_block(lock) \
 for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, mutex_unlock(lock))  for(int LINE_ID(__sync_rc_nargle_) = mutex_lock(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
@@ -150,6 +159,8 @@ extern int thread_join(thread_p t);
 extern int thread_destroy(thread_p *t);
 
 #define THREAD_LOCAL __declspec(thread)
+#define THREAD_FUNC(tfunc) DWORD __stdcall tfunc(LPVOID arg)
+#define THREAD_RETURN(val) return ((DWORD)val)
 
 /* atomic operations */
 typedef volatile long int lock_t;
@@ -159,6 +170,12 @@ typedef volatile long int lock_t;
 /* returns non-zero when lock acquired, zero when lock operation failed */
 extern int lock_acquire(lock_t *lock);
 extern void lock_release(lock_t *lock);
+extern int lock_acquire_spin(lock_t *lock);
+
+#define spin_block(lock) \
+for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, lock_release(lock))  for(int LINE_ID(__sync_rc_nargle_) = lock_acquire_spin(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
+
+
 
 /* socket functions */
 typedef struct sock_t *sock_p;

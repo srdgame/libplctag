@@ -102,7 +102,7 @@ void request_cleanup(void *req_arg)
     pdebug(DEBUG_DETAIL, "Starting.");
 
     if(r) {
-        rc_free(r);
+        //rc_free(r);
     }
 
     pdebug(DEBUG_DETAIL, "Done.");
