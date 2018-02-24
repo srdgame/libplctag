@@ -40,7 +40,10 @@
 #define PLCTAG_DATA_LITTLE_ENDIAN   (0)
 #define PLCTAG_DATA_BIG_ENDIAN      (1)
 
+extern const char *VERSION;
+extern int library_terminating;
 extern mutex_p global_library_mutex;
+
 
 typedef struct plc_tag_t *plc_tag_p;
 
@@ -65,6 +68,9 @@ struct tag_vtable_t {
 
 typedef struct tag_vtable_t *tag_vtable_p;
 
+typedef void (*tag_tickler_func)(plc_tag_p tag);
+
+typedef plc_tag_p (*tag_create_function)(attr attributes);
 
 /*
  * The base definition of the tag structure.  This is used
@@ -74,6 +80,7 @@ typedef struct tag_vtable_t *tag_vtable_p;
  */
 
 #define TAG_BASE_STRUCT tag_vtable_p vtable; \
+                        tag_tickler_func tickler; \
                         mutex_p mut; \
                         int status; \
                         int endian; \

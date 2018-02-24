@@ -21,10 +21,9 @@
 #include <platform.h>
 #include <util/debug.h>
 #include <util/attr.h>
-#include <lib/libplctag_tag.h>
+#include <lib/tag.h>
 #include <lib/libplctag.h>
 #include <system/tag.h>
-#include <lib/init.h>
 
 
 /* we'll need to set these per protocol type.

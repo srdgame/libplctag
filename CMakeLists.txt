@@ -1,5 +1,5 @@
 #
-#   Copyright 2016, OmanTek
+#   Copyright 2018, OmanTek
 #   Author: Kyle Hayes
 #
 #    This library is free software; you can redistribute it and/or
@@ -116,11 +116,12 @@ MESSAGE("BASE_C_FLAGS=${BASE_C_FLAGS}")
 MESSAGE("BASE_CXX_FLAGS=${BASE_CXX_FLAGS}")
 
 # set up the library sources
-set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
-                     "${lib_SRC_PATH}/init.h"
+set ( libplctag_SRCS 
+                     #"${lib_SRC_PATH}/init.c"
+                     #"${lib_SRC_PATH}/init.h"
                      "${lib_SRC_PATH}/libplctag.h"
-                     "${lib_SRC_PATH}/libplctag_tag.c"
-                     "${lib_SRC_PATH}/libplctag_tag.h"
+                     "${lib_SRC_PATH}/lib.c"
+                     "${lib_SRC_PATH}/tag.h"
                      "${ab_SRC_PATH}/ab.h"
                      "${ab_SRC_PATH}/ab_common.c"
                      "${ab_SRC_PATH}/ab_common.h"
@@ -153,8 +154,6 @@ set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
                      "${util_SRC_PATH}/debug.c"
                      "${util_SRC_PATH}/debug.h"
                      "${util_SRC_PATH}/macros.h"
-                     "${util_SRC_PATH}/pt.c"
-                     "${util_SRC_PATH}/pt.h"
                      "${util_SRC_PATH}/refcount.c"
                      "${util_SRC_PATH}/refcount.h"
                      "${platform_SRC_PATH}/platform.c"

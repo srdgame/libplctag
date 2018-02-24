@@ -27,7 +27,7 @@
 
 #include <platform.h>
 #include <lib/libplctag.h>
-#include <lib/libplctag_tag.h>
+#include <lib/tag.h>
 #include <ab/ab.h>
 #include <ab/ab_common.h>
 #include <ab/pccc.h>
@@ -54,8 +54,6 @@ volatile mutex_p global_session_mut = NULL;
 
 /* request/response handling thread */
 volatile thread_p io_handler_thread = NULL;
-
-volatile int library_terminating = 0;
 
 
 
@@ -148,8 +146,6 @@ void ab_teardown(void)
     pdebug(DEBUG_INFO,"Releasing global AB protocol resources.");
 
     pdebug(DEBUG_INFO,"Terminating IO thread.");
-    /* kill the IO thread first. */
-    library_terminating = 1;
 
     /* wait for the thread to die */
     thread_join(io_handler_thread);
