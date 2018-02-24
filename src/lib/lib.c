@@ -1654,7 +1654,7 @@ static int api_lock(int index)
 {
     int rc = PLCTAG_STATUS_OK;
 
-    pdebug(DEBUG_DETAIL,"Starting");
+    pdebug(DEBUG_SPEW,"Starting");
 
     if(index < 0 || index > MAX_TAG_ENTRIES) {
         pdebug(DEBUG_WARN,"Illegal tag index %d",index);
@@ -1663,7 +1663,7 @@ static int api_lock(int index)
 
     rc = mutex_lock(tag_api_mutex[index]);
 
-    pdebug(DEBUG_DETAIL,"Done with status %d", rc);
+    pdebug(DEBUG_SPEW,"Done with status %d", rc);
 
     return rc;
 }
@@ -1677,7 +1677,7 @@ static int api_unlock(int index)
 {
     int rc = PLCTAG_STATUS_OK;
 
-    pdebug(DEBUG_DETAIL,"Starting");
+    pdebug(DEBUG_SPEW,"Starting");
 
     if(index < 0 || index > MAX_TAG_ENTRIES) {
         pdebug(DEBUG_WARN,"Illegal tag index %d",index);
@@ -1686,7 +1686,7 @@ static int api_unlock(int index)
 
     rc = mutex_unlock(tag_api_mutex[index]);
 
-    pdebug(DEBUG_DETAIL,"Done with status %d", rc);
+    pdebug(DEBUG_SPEW,"Done with status %d", rc);
 
     return rc;
 }
@@ -1753,7 +1753,7 @@ static plc_tag_p tag_id_to_tag_ptr(plc_tag tag_id)
     plc_tag_p result = NULL;
     int index = tag_id_to_tag_index(tag_id);
 
-    pdebug(DEBUG_DETAIL, "Starting");
+    pdebug(DEBUG_SPEW, "Starting");
 
     if(index == TAG_ID_ERROR) {
         pdebug(DEBUG_ERROR,"Bad tag ID passed! %d", tag_id);
@@ -1762,13 +1762,13 @@ static plc_tag_p tag_id_to_tag_ptr(plc_tag tag_id)
 
     result = tag_map[index];
     if(result && result->tag_id == tag_id) {
-        pdebug(DEBUG_DETAIL, "Correct mapping at index %d for id %d found with tag %p", index, tag_id, result);
+        pdebug(DEBUG_SPEW, "Correct mapping at index %d for id %d found with tag %p", index, tag_id, result);
     } else {
         pdebug(DEBUG_WARN, "Not found, tag id %d maps to a different tag", tag_id);
         result = NULL;
     }
 
-    pdebug(DEBUG_DETAIL,"Done with tag %p", result);
+    pdebug(DEBUG_SPEW,"Done with tag %p", result);
 
     return result;
 }
