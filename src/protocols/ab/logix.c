@@ -49,16 +49,16 @@
 
 
 
-static int eip_cip_tag_status(ab_tag_p tag);
-static int eip_cip_tag_read_start(ab_tag_p tag);
-static int eip_cip_tag_write_start(ab_tag_p tag);
+static int tag_status(ab_tag_p tag);
+static int tag_read_start(ab_tag_p tag);
+static int tag_write_start(ab_tag_p tag);
 
 struct tag_vtable_t logix_vtable = { (tag_tickler_func)NULL, 
                                      (tag_vtable_func)ab_tag_abort, 
                                      (tag_vtable_func)ab_tag_destroy, 
-                                     (tag_vtable_func)eip_cip_tag_read_start, 
-                                     (tag_vtable_func)eip_cip_tag_status, 
-                                     (tag_vtable_func)eip_cip_tag_write_start };
+                                     (tag_vtable_func)tag_read_start, 
+                                     (tag_vtable_func)tag_status, 
+                                     (tag_vtable_func)tag_write_start };
 
 int allocate_request_slot(ab_tag_p tag);
 int allocate_read_request_slot(ab_tag_p tag);
@@ -78,12 +78,12 @@ int calculate_write_sizes(ab_tag_p tag);
  ************************************************************************/
 
 /*
- * eip_cip_tag_status
+ * tag_status
  *
  * CIP-specific status.  This functions as a "tickler" routine
  * to check on the completion of async requests.
  */
-int eip_cip_tag_status(ab_tag_p tag)
+int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     int session_rc = PLCTAG_STATUS_OK;
@@ -169,7 +169,7 @@ int eip_cip_tag_status(ab_tag_p tag)
 }
 
 /*
- * eip_cip_tag_read_start
+ * tag_read_start
  *
  * This function must be called only from within one thread, or while
  * the tag's mutex is locked.
@@ -177,7 +177,7 @@ int eip_cip_tag_status(ab_tag_p tag)
  * The function starts the process of getting tag data from the PLC.
  */
 
-int eip_cip_tag_read_start(ab_tag_p tag)
+int tag_read_start(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     int i;
@@ -260,7 +260,7 @@ int eip_cip_tag_read_start(ab_tag_p tag)
 }
 
 /*
- * eip_cip_tag_write_start
+ * tag_write_start
  *
  * This must be called from one thread alone, or while the tag mutex is
  * locked.
@@ -268,7 +268,7 @@ int eip_cip_tag_read_start(ab_tag_p tag)
  * The routine starts the process of writing to a tag.
  */
 
-int eip_cip_tag_write_start(ab_tag_p tag)
+int tag_write_start(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     int i;
@@ -288,7 +288,7 @@ int eip_cip_tag_write_start(ab_tag_p tag)
 
         tag->pre_write_read = 1;
 
-        return eip_cip_tag_read_start(tag);
+        return tag_read_start(tag);
     }
 
     /*
@@ -1149,7 +1149,7 @@ static int check_read_status_connected(ab_tag_p tag)
             if (tag->first_read) {
                 /* call read start again to get the next piece */
                 pdebug(DEBUG_DETAIL, "calling ab_rag_read_cip_start_unsafe() to get the next chunk.");
-                rc = eip_cip_tag_read_start(tag);
+                rc = tag_read_start(tag);
             } else {
                 pdebug(DEBUG_WARN, "Insufficient data read for tag!");
                 ab_tag_abort(tag);
@@ -1169,7 +1169,7 @@ static int check_read_status_connected(ab_tag_p tag)
                 pdebug(DEBUG_DETAIL, "Restarting write call now.");
 
                 tag->pre_write_read = 0;
-                rc = eip_cip_tag_write_start(tag);
+                rc = tag_write_start(tag);
             }
         }
     } else {
@@ -1390,8 +1390,8 @@ static int check_read_status_unconnected(ab_tag_p tag)
             /* no, not yet */
             if (tag->first_read) {
                 /* call read start again to get the next piece */
-                pdebug(DEBUG_DETAIL, "calling eip_cip_tag_read_start() to get the next chunk.");
-                rc = eip_cip_tag_read_start(tag);
+                pdebug(DEBUG_DETAIL, "calling tag_read_start() to get the next chunk.");
+                rc = tag_read_start(tag);
             } else {
                 pdebug(DEBUG_WARN, "Insufficient data read for tag!");
                 ab_tag_abort(tag);
@@ -1411,7 +1411,7 @@ static int check_read_status_unconnected(ab_tag_p tag)
                 pdebug(DEBUG_INFO, "Restarting write call now.");
 
                 tag->pre_write_read = 0;
-                rc = eip_cip_tag_write_start(tag);
+                rc = tag_write_start(tag);
             }
         }
     } else {
