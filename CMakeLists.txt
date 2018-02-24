@@ -129,7 +129,7 @@ set ( libplctag_SRCS
                      "${ab_SRC_PATH}/cip.h"
                      "${ab_SRC_PATH}/connection.c"
                      "${ab_SRC_PATH}/connection.h"
-                     "${ab_SRC_PATH}/eip.c"
+                     #"${ab_SRC_PATH}/eip.c"
                      "${ab_SRC_PATH}/eip.h"
                      "${ab_SRC_PATH}/eip_cip.c"
                      "${ab_SRC_PATH}/eip_cip.h"

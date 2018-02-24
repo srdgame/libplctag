@@ -129,8 +129,10 @@ extern int session_add_request_unsafe(ab_session_p sess, ab_request_p req);
 extern int session_add_request(ab_session_p sess, ab_request_p req);
 extern int session_remove_request_unsafe(ab_session_p sess, ab_request_p req);
 extern int session_remove_request(ab_session_p sess, ab_request_p req);
-//extern int session_acquire(ab_session_p session);
-//extern int session_release(ab_session_p session);
+
+/* send/receive packets. */
+extern int recv_eip_response_unsafe(ab_session_p session);
+extern int send_eip_request_unsafe(ab_request_p req);
 
 
 extern int session_setup();

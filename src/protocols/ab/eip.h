@@ -33,9 +33,9 @@
 #include <ab/session.h>
 
 
-int send_eip_request_unsafe(ab_request_p req);
-int recv_eip_response_unsafe(ab_session_p session);
-
+//int send_eip_request_unsafe(ab_request_p req);
+//int recv_eip_response_unsafe(ab_session_p session);
+//
 
 
 
