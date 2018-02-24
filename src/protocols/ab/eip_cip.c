@@ -1024,22 +1024,8 @@ static int check_read_status_connected(ab_tag_p tag)
         }
 
         if (cip_resp->status != AB_CIP_STATUS_OK && cip_resp->status != AB_CIP_STATUS_FRAG) {
-            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s", cip_resp->status, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_SHORT));
-            pdebug(DEBUG_INFO, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_LONG));
-
-            switch (cip_resp->status) {
-                case 0x04: /* FIXME - should be defined constants */
-                case 0x05:
-                case 0x13:
-                case 0x1C:
-                    rc = PLCTAG_ERR_BAD_PARAM;
-                    break;
-
-                default:
-                    rc = PLCTAG_ERR_REMOTE_ERR;
-                    break;
-            }
-
+            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s - %s", cip_resp->status, decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_SHORT), decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_LONG));
+            rc = decode_cip_error_status(&cip_resp->status);
             break;
         }
 
@@ -1276,21 +1262,10 @@ static int check_read_status_unconnected(ab_tag_p tag)
         }
 
         if (cip_resp->status != AB_CIP_STATUS_OK && cip_resp->status != AB_CIP_STATUS_FRAG) {
-            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s", cip_resp->status, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_SHORT));
-            pdebug(DEBUG_INFO, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_LONG));
+            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s - %s", cip_resp->status, decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_SHORT), decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_LONG));
 
-            switch (cip_resp->status) {
-                case 0x04: /* FIXME - should be defined constants */
-                case 0x05:
-                case 0x13:
-                case 0x1C:
-                    rc = PLCTAG_ERR_BAD_PARAM;
-                    break;
-
-                default:
-                    rc = PLCTAG_ERR_REMOTE_ERR;
-                    break;
-            }
+            /* translate the error into a PLCTAG_ERR_ value. */
+            rc = decode_cip_error_status(&cip_resp->status);
 
             break;
         }
@@ -1514,9 +1489,8 @@ static int check_write_status_connected(ab_tag_p tag)
         }
 
         if (cip_resp->status != AB_CIP_STATUS_OK && cip_resp->status != AB_CIP_STATUS_FRAG) {
-            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s", cip_resp->status, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_SHORT));
-            pdebug(DEBUG_INFO, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_LONG));
-            rc = PLCTAG_ERR_REMOTE_ERR;
+            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s - %s", cip_resp->status, decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_SHORT), decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_LONG));
+            rc = decode_cip_error_status(&cip_resp->status);
             break;
         }
     }
@@ -1595,9 +1569,8 @@ int check_write_status_unconnected(ab_tag_p tag)
         }
 
         if (cip_resp->status != AB_CIP_STATUS_OK && cip_resp->status != AB_CIP_STATUS_FRAG) {
-            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s", cip_resp->status, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_SHORT));
-            pdebug(DEBUG_INFO, decode_cip_error((uint8_t *)&cip_resp->status, AB_ERROR_STR_LONG));
-            rc = PLCTAG_ERR_REMOTE_ERR;
+            pdebug(DEBUG_WARN, "CIP read failed with status: 0x%x %s", cip_resp->status, decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_SHORT), decode_cip_error_str(&cip_resp->status, AB_ERROR_STR_LONG));
+            rc = decode_cip_error_status(&cip_resp->status);
             break;
         }
     }

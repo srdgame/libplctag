@@ -289,6 +289,10 @@ LIB_EXPORT const char* plc_tag_decode_error(int rc)
         case PLCTAG_ERR_NOT_FOUND: return "PLCTAG_ERR_NOT_FOUND"; break;
         case PLCTAG_ERR_ABORT: return "PLCTAG_ERR_ABORT"; break;
         case PLCTAG_ERR_WINSOCK: return "PLCTAG_ERR_WINSOCK"; break;
+        case PLCTAG_ERR_DUPLICATE: return "PLCTAG_ERR_DUPLICATE"; break;
+        case PLCTAG_ERR_BUSY: return "PLCTAG_ERR_BUSY"; break;
+        case PLCTAG_ERR_NO_RESOURCES: return "PLCTAG_ERR_NO_RESOURCES"; break;
+        case PLCTAG_ERR_TOO_SHORT: return "PLCTAG_ERR_TOO_SHORT"; break;
 
         default: return "Unknown error."; break;
     }

@@ -108,6 +108,10 @@ typedef int32_t plc_tag;
 #define PLCTAG_ERR_NOT_FOUND        (-34)
 #define PLCTAG_ERR_ABORT            (-35)
 #define PLCTAG_ERR_WINSOCK          (-36)
+#define PLCTAG_ERR_DUPLICATE        (-37)
+#define PLCTAG_ERR_BUSY             (-38)
+#define PLCTAG_ERR_NO_RESOURCES     (-39)
+#define PLCTAG_ERR_TOO_SHORT        (-40)
 
 
 
