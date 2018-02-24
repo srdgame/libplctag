@@ -183,7 +183,7 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
 
     connection->session = tag->session;
     connection->conn_seq_num = 1 /*(uint16_t)(intptr_t)(connection)*/;
-    connection->orig_connection_id = ++(connection->session->conn_serial_number);
+    connection->orig_connection_id = session_get_new_connection_id_unsafe(connection->session);
     connection->status = PLCTAG_STATUS_PENDING;
     connection->exclusive = !shared;
 

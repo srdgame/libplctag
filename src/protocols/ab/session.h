@@ -61,69 +61,6 @@
 #define SESSION_MAX_CONNECTED_REQUESTS_IN_FLIGHT (2)
 #define SESSION_MAX_UNCONNECTED_REQUESTS_IN_FLIGHT (8)
 
-struct ab_session_t {
-    /* required for live objects */
-    liveobj_func session_obj_func;
-    int liveobj_id;
-    
-    int session_initialized;
-    
-    ab_session_p next;
-    ab_session_p prev;
-
-    /* gateway connection related info */
-    char host[MAX_SESSION_HOST];
-    int port;
-    sock_p sock;
-    int is_connected;
-    int status;
-
-    /* registration info */
-    uint32_t session_handle;
-    int registered;
-
-    /* Sequence ID for requests. */
-    uint64_t session_seq_id;
-
-    /* current request being sent, only one at a time */
-    ab_request_p current_request;
-
-    /* list of outstanding requests for this session */
-    ab_request_p requests;
-
-    /* counter for number of messages in flight */
-    int num_reqs_in_flight;
-    //int64_t next_packet_time_us;
-    //int64_t next_packet_interval_us;
-
-    int64_t retry_interval;
-
-    /* short cumulative period for calculating round trip time. */
-    int64_t round_trip_samples[SESSION_NUM_ROUND_TRIP_SAMPLES];
-    int round_trip_sample_index;
-
-    /* serialization control */
-    //~ int serial_request_in_flight;
-    //~ uint64_t serial_seq_in_flight;
-
-    /* data for receiving messages */
-    uint64_t resp_seq_id;
-    int has_response;
-    uint32_t recv_offset;
-    uint8_t recv_data[MAX_REQ_RESP_SIZE];
-
-    /*int recv_size;*/
-
-    /* tags for this session */
-    ab_tag_p tags;
-
-    /* ref count for session */
-    //refcount rc;
-
-    /* connections for this session */
-    ab_connection_p connections;
-    uint32_t conn_serial_number; /* id for the next connection */
-};
 
 uint64_t session_get_new_seq_id_unsafe(ab_session_p sess);
 uint64_t session_get_new_seq_id(ab_session_p sess);
@@ -138,6 +75,9 @@ extern int session_add_request_unsafe(ab_session_p sess, ab_request_p req);
 extern int session_add_request(ab_session_p sess, ab_request_p req);
 extern int session_remove_request_unsafe(ab_session_p sess, ab_request_p req);
 extern int session_remove_request(ab_session_p sess, ab_request_p req);
+
+extern uint32_t session_get_new_connection_id_unsafe(ab_session_p);
+extern int session_status_unsafe(ab_session_p session);
 
 /* send/receive packets. */
 extern int recv_eip_response_unsafe(ab_session_p session);

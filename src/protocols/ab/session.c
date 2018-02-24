@@ -39,6 +39,57 @@
 
 
 
+
+struct ab_session_t {
+    /* required for live objects */
+    liveobj_func session_obj_func;
+    int liveobj_id;
+    
+    int registered;
+    
+    /* gateway connection related info */
+    char host[MAX_SESSION_HOST];
+    int port;
+    sock_p sock;
+    int is_connected;
+    int status;
+
+    /* registration info */
+    uint32_t session_handle;
+
+    /* Sequence ID for requests. */
+    uint64_t session_seq_id;
+
+    /* current request being sent, only one at a time */
+    ab_request_p current_request;
+
+    /* list of outstanding requests for this session */
+    ab_request_p requests;
+
+    /* counter for number of messages in flight */
+    int num_reqs_in_flight;
+    //int64_t next_packet_time_us;
+    //int64_t next_packet_interval_us;
+
+    int64_t retry_interval;
+
+    /* short cumulative period for calculating round trip time. */
+    int64_t round_trip_samples[SESSION_NUM_ROUND_TRIP_SAMPLES];
+    int round_trip_sample_index;
+
+    /* data for receiving messages */
+    uint64_t resp_seq_id;
+    int has_response;
+    uint32_t recv_offset;
+    uint8_t recv_data[MAX_REQ_RESP_SIZE];
+
+    /* connections for this session */
+    ab_connection_p connections;
+    uint32_t conn_serial_number; /* id for the next connection */
+};
+
+
+
 /*
  * Externally visible global variables
  */
@@ -47,43 +98,20 @@ mutex_p global_session_mut = NULL;
 
 /* local variables. */
 
-//static ab_session_p sessions = NULL;
-
-/* request/response handling thread */
-//static thread_p io_handler_thread = NULL;
-
 
 
 static ab_session_p session_create_unsafe(const char* host, int gw_port);
 static int session_init(ab_session_p session);
 static int add_session_unsafe(ab_session_p n);
-//~ static int add_session(ab_session_p s);
-//static int remove_session_unsafe(ab_session_p n);
-//~ static int remove_session(ab_session_p s);
 static int find_session_by_host_unsafe(rc_ptr obj, int type, void *host_arg);
-//~ static int session_add_tag_unsafe(ab_session_p session, ab_tag_p tag);
-//~ static int session_add_tag(ab_session_p session, ab_tag_p tag);
-//~ static int session_remove_tag_unsafe(ab_session_p session, ab_tag_p tag);
-//~ static int session_remove_tag(ab_session_p session, ab_tag_p tag);
 static int session_connect(ab_session_p session);
-//~ static int session_cleanup_unsafe(ab_session_p session);
-static void session_cleanup(rc_ptr session);
-//~ static int session_is_empty(ab_session_p session);
+static void session_destroy(rc_ptr session);
 static int session_register(ab_session_p session);
 static int session_unregister_unsafe(ab_session_p session);
 
-
-
-//#ifdef _WIN32
-//DWORD __stdcall request_handler_func(LPVOID not_used);
-//#else
-//void *request_handler_func(void *not_used);
-//#endif
-/* forward reference to the session handler function. */
 static void session_handler(ab_session_p session);
-
 static int session_check_incoming_data_unsafe(ab_session_p session);
-//static int request_check_outgoing_data_unsafe(ab_session_p session, ab_request_p req);
+static int session_check_outgoing_data_unsafe(ab_session_p session);
 
 
 /*
@@ -253,6 +281,24 @@ int session_remove_connection(ab_session_p session, ab_connection_p connection)
 }
 
 
+uint32_t session_get_new_connection_id_unsafe(ab_session_p session)
+{
+    ++(session->conn_serial_number);
+    
+    return session->conn_serial_number;
+}
+
+
+int session_status_unsafe(ab_session_p session)
+{
+    if(!session) {
+        return PLCTAG_ERR_NULL_PTR;
+    }
+    
+    return session->status;
+}
+
+
 int session_find_or_create(ab_session_p *tag_session, attr attribs)
 {
     /*int debug = attr_get_int(attribs,"debug",0);*/
@@ -327,43 +373,6 @@ int add_session(ab_session_p s)
     return rc;
 }
 
-//int remove_session_unsafe(ab_session_p session)
-//{
-//    int status = PLCTAG_STATUS_OK;
-//
-//    pdebug(DEBUG_DETAIL, "Starting");
-//
-//    if (!session) {
-//        return PLCTAG_ERR_NULL_PTR;
-//    }
-//    
-//    status = liveobj_remove(session->liveobj_id);
-//    
-//    if(status != PLCTAG_STATUS_OK) {
-//        pdebug(DEBUG_WARN,"Session already removed?");
-//        return PLCTAG_ERR_NOT_FOUND;
-//    }
-//
-//    pdebug(DEBUG_DETAIL, "Done");
-//
-//    return status;
-//}
-
-//int remove_session(ab_session_p s)
-//{
-//    int rc = PLCTAG_STATUS_OK;
-//
-//    pdebug(DEBUG_DETAIL, "Starting.");
-//
-//    critical_block(global_session_mut) {
-//        rc = remove_session_unsafe(s);
-//    }
-//
-//    pdebug(DEBUG_DETAIL, "Done.");
-//
-//    return rc;
-//}
-//
 
 static int session_match_valid(const char *host, ab_session_p session)
 {
@@ -417,7 +426,7 @@ ab_session_p session_create_unsafe(const char* host, int gw_port)
 
     pdebug(DEBUG_DETAIL, "Warning: not using passed port %d", gw_port);
 
-    session = rc_alloc(sizeof(struct ab_session_t), session_cleanup);
+    session = rc_alloc(sizeof(struct ab_session_t), session_destroy);
 
     if (!session) {
         pdebug(DEBUG_WARN, "Error allocating new session.");
@@ -455,17 +464,11 @@ ab_session_p session_create_unsafe(const char* host, int gw_port)
      */
     session->conn_serial_number = ++connection_id;
 
-    /* set up the packet interval to a reasonable default */
-    //session->next_packet_interval_us = SESSION_DEFAULT_PACKET_INTERVAL;
-
     /* set up packet round trip information */
     for(int index=0; index < SESSION_NUM_ROUND_TRIP_SAMPLES; index++) {
         session->round_trip_samples[index] = SESSION_DEFAULT_RESEND_INTERVAL_MS;
     }
     session->retry_interval = SESSION_DEFAULT_RESEND_INTERVAL_MS;
-
-    /* FIXME */
-    //pdebug(DEBUG_DETAIL, "Refcount is now %d", rc_count(session));
 
     /* add the new session to the list. */
     add_session_unsafe(session);
@@ -506,6 +509,8 @@ int session_init(ab_session_p session)
     return rc;
 }
 
+
+
 /*
  * session_connect()
  *
@@ -526,6 +531,7 @@ int session_connect(ab_session_p session)
         return 0;
     }
 
+    /* FIXME - this can hang! */
     rc = socket_connect_tcp(session->sock, session->host, AB_EIP_DEFAULT_PORT);
 
     if (rc != PLCTAG_STATUS_OK) {
@@ -541,8 +547,9 @@ int session_connect(ab_session_p session)
     return rc;
 }
 
-/* must have the session mutex held here */
-void session_cleanup(rc_ptr session_arg)
+
+/* ref counted destructor */
+void session_destroy(rc_ptr session_arg)
 {
     ab_session_p session = session_arg;
     ab_request_p req = NULL;
@@ -573,8 +580,6 @@ void session_cleanup(rc_ptr session_arg)
 
     return;
 }
-
-
 
 
 int session_register(ab_session_p session)
@@ -1055,34 +1060,9 @@ int recv_eip_response_unsafe(ab_session_p session)
 }
 
 
-/*
-int session_acquire(ab_session_p session)
-{
-    pdebug(DEBUG_INFO, "Acquire session=%p", session);
-
-    if(!session) {
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    return rc_inc(&session->rc);
-}
-
-
-int session_release(ab_session_p session)
-{
-    pdebug(DEBUG_INFO, "Release session=%p", session);
-
-    if(!session) {
-        return PLCTAG_ERR_NULL_PTR;
-    }
-
-    return refcount_release(&session->rc);
-}
-*/
-
 
 /*******************************************************************************
- ************************** Session IO Thread Functions ************************
+ ************************** Session Library Functions ************************
  ******************************************************************************/
  
  
@@ -1130,37 +1110,43 @@ void session_teardown()
 }
 
 
+
+
+/*******************************************************************************
+ ************************** Session Helper Functions ************************
+ ******************************************************************************/
+
  
 
 
-/*
- * setup_session_mutex
- *
- * check to see if the global mutex is set up.  If not, do an atomic
- * lock and set it up.
- */
-int setup_session_mutex(void)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_INFO, "Starting.");
-
-    critical_block(global_library_mutex) {
-        /* first see if the mutex is there. */
-        if (!global_session_mut) {
-            rc = mutex_create((mutex_p*)&global_session_mut);
-
-            if (rc != PLCTAG_STATUS_OK) {
-                pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
-            }
-        }
-    }
-
-    pdebug(DEBUG_INFO, "Done.");
-
-    return rc;
-}
-
+///*
+// * setup_session_mutex
+// *
+// * check to see if the global mutex is set up.  If not, do an atomic
+// * lock and set it up.
+// */
+//int setup_session_mutex(void)
+//{
+//    int rc = PLCTAG_STATUS_OK;
+//
+//    pdebug(DEBUG_INFO, "Starting.");
+//
+//    critical_block(global_library_mutex) {
+//        /* first see if the mutex is there. */
+//        if (!global_session_mut) {
+//            rc = mutex_create((mutex_p*)&global_session_mut);
+//
+//            if (rc != PLCTAG_STATUS_OK) {
+//                pdebug(DEBUG_ERROR, "Unable to create global tag mutex!");
+//            }
+//        }
+//    }
+//
+//    pdebug(DEBUG_INFO, "Done.");
+//
+//    return rc;
+//}
+//
 
 static int match_request_and_response(ab_request_p request, eip_cip_co_resp *response)
 {
@@ -1295,6 +1281,7 @@ int ok_to_resend(ab_session_p session, ab_request_p request)
     return 1;
 }
 
+
 int process_response_packet_unsafe(ab_session_p session)
 {
     int rc = PLCTAG_STATUS_OK;
@@ -1315,7 +1302,6 @@ int process_response_packet_unsafe(ab_session_p session)
 
     return rc;
 }
-
 
 
 int session_check_incoming_data_unsafe(ab_session_p session)
@@ -1356,57 +1342,6 @@ int session_check_incoming_data_unsafe(ab_session_p session)
     return rc;
 }
 
-//int request_check_outgoing_data_unsafe(ab_session_p session, ab_request_p request)
-//{
-//    int rc = PLCTAG_STATUS_OK;
-//
-//    /*pdebug(DEBUG_DETAIL,"Starting.");*/
-//
-//    /*
-//     * Check to see if we can send something.
-//     */
-//
-//    if(!session->current_request && request->send_request /*&& session->next_packet_time_us < (time_ms() * 1000)*/) {
-//        /* nothing being sent and this request is outstanding */
-//
-//        /* refcount++ since we are storing a pointer */
-//        session->current_request = rc_inc(request);
-//
-//        //session->next_packet_time_us = (time_ms()*1000) + session->next_packet_interval_us;
-//
-//        pdebug(DEBUG_INFO,"request->send_request=%d",request->send_request);
-//        //pdebug(DEBUG_INFO,"session->next_packet_time_us=%lld and time=%lld",session->next_packet_time_us, (time_ms()*1000));
-//        //pdebug(DEBUG_INFO,"Setting up request for sending, next packet in %lldus",(session->next_packet_time_us - (time_ms()*1000)));
-//
-//        if(request->send_count == 0) {
-//            request->time_sent = time_ms();
-//        }
-//
-//        request->send_count++;
-//    }
-//
-//    /* if we are already sending this request, check its status */
-//    if (session->current_request == request) {
-//        /* is the request done? */
-//        if (request->send_request) {
-//            /* not done, try sending more */
-//            send_eip_request_unsafe(request);
-//            /* FIXME - handle return code! */
-//        } else {
-//            /*
-//             * done in some manner, remove it from the session to let
-//             * another request get sent.
-//             */
-//            /* we need to release the request since we are removing a pointer to it. */
-//            session->current_request = rc_dec(session->current_request);
-//        }
-//    }
-//
-//    /*pdebug(DEBUG_DETAIL,"Done.");*/
-//
-//    return rc;
-//}
-//
 
 
 static int session_send_current_request(ab_session_p session)
@@ -1537,6 +1472,12 @@ void session_handler(ab_session_p session)
         }
             
         /* check for incoming data. */
+        
+        /*
+         * FIXME - check to see if we need to hold the mutex here.  
+         * The old code did?
+         */
+        
         rc = session_check_incoming_data_unsafe(session);
         if (rc != PLCTAG_STATUS_OK) {
             pdebug(DEBUG_WARN, "Error when checking for incoming session data! %d", rc);
@@ -1550,68 +1491,5 @@ void session_handler(ab_session_p session)
             /* FIXME - do something useful with this error */
         }
     } while(0);
-    
-    //rc_dec(session);
 }
 
-
-
-
-//#ifdef _WIN32
-//DWORD __stdcall request_handler_func(LPVOID not_used)
-//#else
-//void* request_handler_func(void* not_used)
-//#endif
-//{
-//    ab_session_p cur_sess;
-//
-//    /* garbage code to stop compiler from whining about unused variables */
-//    pdebug(DEBUG_DETAIL,"Starting with arg %p",not_used);
-//
-//    while (!library_terminating) {
-//        /* we need the mutex */
-//        if (global_session_mut == NULL) {
-//            pdebug(DEBUG_ERROR, "global_session_mut is NULL!");
-//            break;
-//        }
-//
-//        /*pdebug(DEBUG_INFO,"entering critical block %p",global_session_mut);*/
-//        critical_block(global_session_mut) {
-//            /*
-//             * loop over the sessions.  For each session, see if we can read some
-//             * data.  If we can, read it in and try to update a request.  If the
-//             * session has outstanding requests that need to be sent, try to send
-//             * them.
-//             */
-//
-//            cur_sess = sessions;
-//
-//            while (cur_sess) {
-//                /* process incoming and outgoing data for the session. */
-//                process_session_tasks_unsafe(cur_sess);
-//
-//                /*  move to the next session */
-//                /*pdebug(DEBUG_INFO,"cur_sess=%p, cur_sess->next=%p",cur_sess, cur_sess->next);*/
-//                cur_sess = cur_sess->next;
-//            }
-//        } /* end synchronized block */
-//        /*pdebug(DEBUG_INFO,"leaving critical block %p",global_session_mut);*/
-//
-//        /*
-//         * give up the CPU. 1ms is not really going to happen.  Usually it is more based on the OS
-//         * default time and is usually around 10ms.  But, this sleep usually causes context switch.
-//         */
-//        sleep_ms(1);
-//    }
-//
-//    thread_stop();
-//
-//    /* FIXME -- this should be factored out as a platform dependency.*/
-//#ifdef _WIN32
-//    return (DWORD)0;
-//#else
-//    return NULL;
-//#endif
-//}
-//
-//

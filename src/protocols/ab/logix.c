@@ -137,7 +137,7 @@ int tag_status(ab_tag_p tag)
      *   N1         N2      N3        N1
      */
     if (tag->session) {
-        session_rc = tag->session->status;
+        session_rc = session_status_unsafe(tag->session);
     } else {
         /* this is not OK.  This is fatal! */
         session_rc = PLCTAG_ERR_CREATE;
