@@ -138,6 +138,7 @@ int initialize_modules(void)
         }
         
         /* start the tickler thread. */
+        pdebug(DEBUG_INFO,"Starting tickler thread.");
         rc = thread_create((thread_p*)&tickler_thread, tag_tickler, 32*1024, NULL);
         if(rc != PLCTAG_STATUS_OK) {
             pdebug(DEBUG_INFO,"Unable to create tag thread!");
@@ -209,6 +210,7 @@ void destroy_modules(void)
     pdebug(DEBUG_INFO,"Tearing down library.");
 
     /* wait for the thread to die */
+    pdebug(DEBUG_INFO,"Stopping tickler thread.");
     thread_join(tickler_thread);
     thread_destroy((thread_p*)&tickler_thread);
 
@@ -1890,7 +1892,9 @@ void* tag_tickler(void* not_used)
         for(int i=1; i < MAX_TAG_ENTRIES; i++) {
             critical_block(tag_api_mutex[i]) {
                 if(tag_map[i]) {
-                    tag_map[i]->tickler(tag_map[i]);
+                    if(tag_map[i]->vtable->tickler) {
+                        tag_map[i]->vtable->tickler(tag_map[i]);
+                    }
                 }
             }
         }

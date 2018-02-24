@@ -83,25 +83,26 @@ int ab_init(void)
     pdebug(DEBUG_INFO,"Initializing AB protocol library.");
 
     /* set up the vtables. */
-    default_vtable.destroy  = (tag_destroy_func)ab_tag_destroy;
+    default_vtable.destroy  = (tag_vtable_func)ab_tag_destroy;
 
-    plc_dhp_vtable.abort    = (tag_abort_func)ab_tag_abort;
-    plc_dhp_vtable.destroy  = (tag_destroy_func)ab_tag_destroy;
-    plc_dhp_vtable.read     = (tag_read_func)eip_dhp_pccc_tag_read_start;
-    plc_dhp_vtable.status   = (tag_status_func)eip_dhp_pccc_tag_status;
-    plc_dhp_vtable.write    = (tag_write_func)eip_dhp_pccc_tag_write_start;
+    
+    plc_dhp_vtable.abort    = (tag_vtable_func)ab_tag_abort;
+    plc_dhp_vtable.destroy  = (tag_vtable_func)ab_tag_destroy;
+    plc_dhp_vtable.read     = (tag_vtable_func)eip_dhp_pccc_tag_read_start;
+    plc_dhp_vtable.status   = (tag_vtable_func)eip_dhp_pccc_tag_status;
+    plc_dhp_vtable.write    = (tag_vtable_func)eip_dhp_pccc_tag_write_start;
 
-    plc_vtable.abort        = (tag_abort_func)ab_tag_abort;
-    plc_vtable.destroy      = (tag_destroy_func)ab_tag_destroy;
-    plc_vtable.read         = (tag_read_func)eip_pccc_tag_read_start;
-    plc_vtable.status       = (tag_status_func)eip_pccc_tag_status;
-    plc_vtable.write        = (tag_write_func)eip_pccc_tag_write_start;
+    plc_vtable.abort        = (tag_vtable_func)ab_tag_abort;
+    plc_vtable.destroy      = (tag_vtable_func)ab_tag_destroy;
+    plc_vtable.read         = (tag_vtable_func)eip_pccc_tag_read_start;
+    plc_vtable.status       = (tag_vtable_func)eip_pccc_tag_status;
+    plc_vtable.write        = (tag_vtable_func)eip_pccc_tag_write_start;
 
-    cip_vtable.abort        = (tag_abort_func)ab_tag_abort;
-    cip_vtable.destroy      = (tag_destroy_func)ab_tag_destroy;
-    cip_vtable.read         = (tag_read_func)eip_cip_tag_read_start;
-    cip_vtable.status       = (tag_status_func)eip_cip_tag_status;
-    cip_vtable.write        = (tag_write_func)eip_cip_tag_write_start;
+    cip_vtable.abort        = (tag_vtable_func)ab_tag_abort;
+    cip_vtable.destroy      = (tag_vtable_func)ab_tag_destroy;
+    cip_vtable.read         = (tag_vtable_func)eip_cip_tag_read_start;
+    cip_vtable.status       = (tag_vtable_func)eip_cip_tag_status;
+    cip_vtable.write        = (tag_vtable_func)eip_cip_tag_write_start;
     
     /* set up session IO thread etc. */
     rc = session_setup();

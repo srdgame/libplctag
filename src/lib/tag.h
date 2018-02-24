@@ -49,16 +49,12 @@ typedef struct plc_tag_t *plc_tag_p;
 
 
 /* define tag operation functions */
-typedef int (*tag_abort_func)(plc_tag_p tag);
-typedef int (*tag_destroy_func)(plc_tag_p tag);
-typedef int (*tag_read_func)(plc_tag_p tag);
-typedef int (*tag_status_func)(plc_tag_p tag);
-typedef int (*tag_write_func)(plc_tag_p tag);
-
+typedef void (*tag_tickler_func)(plc_tag_p tag);
 typedef int (*tag_vtable_func)(plc_tag_p tag);
 
 /* we'll need to set these per protocol type. */
 struct tag_vtable_t {
+    tag_tickler_func tickler;
     tag_vtable_func abort;
     tag_vtable_func destroy;
     tag_vtable_func read;
@@ -67,8 +63,6 @@ struct tag_vtable_t {
 };
 
 typedef struct tag_vtable_t *tag_vtable_p;
-
-typedef void (*tag_tickler_func)(plc_tag_p tag);
 
 typedef plc_tag_p (*tag_create_function)(attr attributes);
 
@@ -80,7 +74,6 @@ typedef plc_tag_p (*tag_create_function)(attr attributes);
  */
 
 #define TAG_BASE_STRUCT tag_vtable_p vtable; \
-                        tag_tickler_func tickler; \
                         mutex_p mut; \
                         int status; \
                         int endian; \
