@@ -133,4 +133,14 @@ extern int session_remove_request(ab_session_p sess, ab_request_p req);
 //extern int session_release(ab_session_p session);
 
 
+extern int session_setup();
+extern void session_teardown();
+
+/* 
+ * FIXME - we use this too much.  Break down into
+ * finer grained mutex use.
+ */
+extern mutex_p global_session_mut;
+
+
 #endif
