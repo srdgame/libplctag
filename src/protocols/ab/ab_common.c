@@ -33,7 +33,7 @@
 #include <ab/pccc.h>
 #include <ab/cip.h>
 #include <ab/eip.h>
-#include <ab/eip_cip.h>
+#include <ab/logix.h>
 #include <ab/eip_pccc.h>
 #include <ab/eip_dhp_pccc.h>
 #include <ab/session.h>
@@ -98,11 +98,11 @@ int ab_init(void)
     plc_vtable.status       = (tag_vtable_func)eip_pccc_tag_status;
     plc_vtable.write        = (tag_vtable_func)eip_pccc_tag_write_start;
 
-    cip_vtable.abort        = (tag_vtable_func)ab_tag_abort;
-    cip_vtable.destroy      = (tag_vtable_func)ab_tag_destroy;
-    cip_vtable.read         = (tag_vtable_func)eip_cip_tag_read_start;
-    cip_vtable.status       = (tag_vtable_func)eip_cip_tag_status;
-    cip_vtable.write        = (tag_vtable_func)eip_cip_tag_write_start;
+//    cip_vtable.abort        = (tag_vtable_func)ab_tag_abort;
+//    cip_vtable.destroy      = (tag_vtable_func)ab_tag_destroy;
+//    cip_vtable.read         = (tag_vtable_func)eip_cip_tag_read_start;
+//    cip_vtable.status       = (tag_vtable_func)eip_cip_tag_status;
+//    cip_vtable.write        = (tag_vtable_func)eip_cip_tag_write_start;
     
     /* set up session IO thread etc. */
     rc = session_setup();
@@ -383,7 +383,7 @@ tag_vtable_p set_tag_vtable(ab_tag_p tag)
                 //~ cip_vtable.write     = (tag_write_func)eip_cip_tag_write_start;
             //~ }
 
-            return &cip_vtable;
+            return &logix_vtable;
 
             break;
 

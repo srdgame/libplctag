@@ -42,11 +42,23 @@
 #include <ab/cip.h>
 #include <ab/tag.h>
 #include <ab/session.h>
-#include <ab/eip_cip.h>
+#include <ab/logix.h>
 #include <ab/error_codes.h>
 #include <util/attr.h>
 #include <util/debug.h>
 
+
+
+static int eip_cip_tag_status(ab_tag_p tag);
+static int eip_cip_tag_read_start(ab_tag_p tag);
+static int eip_cip_tag_write_start(ab_tag_p tag);
+
+struct tag_vtable_t logix_vtable = { (tag_tickler_func)NULL, 
+                                     (tag_vtable_func)ab_tag_abort, 
+                                     (tag_vtable_func)ab_tag_destroy, 
+                                     (tag_vtable_func)eip_cip_tag_read_start, 
+                                     (tag_vtable_func)eip_cip_tag_status, 
+                                     (tag_vtable_func)eip_cip_tag_write_start };
 
 int allocate_request_slot(ab_tag_p tag);
 int allocate_read_request_slot(ab_tag_p tag);

@@ -28,10 +28,15 @@
 #ifndef __LIBPLCTAG_AB_EIP_CIP_H__
 #define __LIBPLCTAG_AB_EIP_CIP_H__
 
+#include <lib/tag.h>
 #include <ab/ab_common.h>
 
-int eip_cip_tag_status(ab_tag_p tag);
-int eip_cip_tag_read_start(ab_tag_p tag);
-int eip_cip_tag_write_start(ab_tag_p tag);
+
+//int eip_cip_tag_status(ab_tag_p tag);
+//int eip_cip_tag_read_start(ab_tag_p tag);
+//int eip_cip_tag_write_start(ab_tag_p tag);
+
+extern struct tag_vtable_t logix_vtable;
+
 
 #endif
