@@ -33,4 +33,10 @@ ipch/
 [Dd]ebug*/
 [Rr]elease*/
 Ankh.NoLoad
+# CodeLite files
+.codelite/*
+.codelit*
+cmake-build-Debug/
+*.project
+*.workspace
 
