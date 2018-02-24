@@ -134,6 +134,8 @@ set ( libplctag_SRCS
                      "${ab_SRC_PATH}/error_codes.h"
                      "${ab_SRC_PATH}/logix.c"
                      "${ab_SRC_PATH}/logix.h"
+                     "${ab_SRC_PATH}/micro800.c"
+                     "${ab_SRC_PATH}/micro800.h"
                      "${ab_SRC_PATH}/pccc.c"
                      "${ab_SRC_PATH}/pccc.h"
                      "${ab_SRC_PATH}/plc5_dhp.c"

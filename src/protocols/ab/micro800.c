@@ -1,6 +1,6 @@
 /***************************************************************************
- *   Copyright (C) 2015 by OmanTek                                         *
- *   Author Kyle Hayes  kylehayes@omantek.com                              *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
+ *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -17,22 +17,8 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-
-/**************************************************************************
- * CHANGE LOG                                                             *
- *                                                                        *
- * 2012-02-23  KRH - Created file.                                        *
- *                                                                        *
- * 2012-06-15  KRH - Rename file and includes for code re-org to get      *
- *                   ready for DF1 implementation.  Refactor some common  *
- *                   parts into ab/util.c.                                *
- *                                                                        *
- * 2012-06-20  KRH - change plc_err() calls for new error API.            *
- *                                                                        *
- * 2012-12-19   KRH - Start refactoring for threaded API and attributes.   *
- *                                                                        *
- **************************************************************************/
-
+ 
+ 
 #include <ctype.h>
 #include <platform.h>
 #include <lib/libplctag.h>
@@ -53,7 +39,7 @@ static int tag_status(ab_tag_p tag);
 static int tag_read_start(ab_tag_p tag);
 static int tag_write_start(ab_tag_p tag);
 
-struct tag_vtable_t logix_vtable = { (tag_tickler_func)NULL, 
+struct tag_vtable_t micro800_vtable = { (tag_tickler_func)NULL, 
                                      (tag_vtable_func)ab_tag_abort, 
                                      (tag_vtable_func)ab_tag_destroy, 
                                      (tag_vtable_func)tag_read_start, 

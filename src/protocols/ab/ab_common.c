@@ -34,6 +34,7 @@
 #include <ab/cip.h>
 #include <ab/eip.h>
 #include <ab/logix.h>
+#include <ab/micro800.h>
 #include <ab/plc5.h>
 #include <ab/plc5_dhp.h>
 #include <ab/session.h>
@@ -318,13 +319,14 @@ tag_vtable_p set_tag_vtable(ab_tag_p tag)
 
         case AB_PROTOCOL_MLGX:
             return &plc5_vtable;
-
             break;
 
         case AB_PROTOCOL_MLGX800:
+            return &micro800_vtable;
+            break;
+
         case AB_PROTOCOL_LGX:
             return &logix_vtable;
-
             break;
 
         default:
