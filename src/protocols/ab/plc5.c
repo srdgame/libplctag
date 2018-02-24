@@ -34,7 +34,7 @@ extern "C"
 #include <lib/libplctag.h>
 #include <ab/ab_common.h>
 #include <ab/pccc.h>
-#include <ab/eip_pccc.h>
+#include <ab/plc5.h>
 #include <ab/tag.h>
 #include <ab/connection.h>
 #include <ab/session.h>
@@ -45,13 +45,27 @@ extern "C"
 static int check_read_status(ab_tag_p tag);
 static int check_write_status(ab_tag_p tag);
 
+static int tag_status(ab_tag_p tag);
+static int read_start(ab_tag_p tag);
+static int write_start(ab_tag_p tag);
+
+
+
+struct tag_vtable_t plc5_vtable = { (tag_tickler_func)NULL, 
+                                     (tag_vtable_func)ab_tag_abort, 
+                                     (tag_vtable_func)ab_tag_destroy, 
+                                     (tag_vtable_func)read_start, 
+                                     (tag_vtable_func)tag_status, 
+                                     (tag_vtable_func)write_start };
+
+
 /*
  * ab_tag_status_pccc
  *
  * CIP-specific status.  This functions as a "tickler" routine
  * to check on the completion of async requests.
  */
-int eip_pccc_tag_status(ab_tag_p tag)
+int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     int session_rc = PLCTAG_STATUS_OK;
@@ -103,12 +117,12 @@ int eip_pccc_tag_status(ab_tag_p tag)
 
 
 /*
- * eip_pccc_tag_read_start
+ * read_start
  *
  * Start a PCCC tag read (PLC5, SLC).
  */
 
-int eip_pccc_tag_read_start(ab_tag_p tag)
+int read_start(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     ab_request_p req;
@@ -358,7 +372,7 @@ static int check_read_status(ab_tag_p tag)
 
 /* FIXME  convert to unconnected messages. */
 
-int eip_pccc_tag_write_start(ab_tag_p tag)
+int write_start(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
     pccc_req *pccc;
