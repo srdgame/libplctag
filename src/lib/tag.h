@@ -35,10 +35,14 @@
 #include <lib/libplctag.h>
 #include <platform.h>
 #include <util/attr.h>
+#include <util/liveobj.h>
 
 #define PLCTAG_CANARY (0xACA7CAFE)
 #define PLCTAG_DATA_LITTLE_ENDIAN   (0)
 #define PLCTAG_DATA_BIG_ENDIAN      (1)
+
+#define LIVEOBJ_TYPE_TAG  (1)
+#define LIVEOBJ_TYPE_AB_PLC (2)
 
 extern const char *VERSION;
 extern int library_terminating;
@@ -49,14 +53,14 @@ typedef struct plc_tag_t *plc_tag_p;
 
 
 /* define tag operation functions */
-typedef void (*tag_tickler_func)(plc_tag_p tag);
+typedef void (*tag_handler_func)(plc_tag_p tag);
 typedef int (*tag_vtable_func)(plc_tag_p tag);
 
 /* we'll need to set these per protocol type. */
 struct tag_vtable_t {
-    tag_tickler_func tickler;
+    tag_handler_func handler;
     tag_vtable_func abort;
-    tag_vtable_func destroy;
+    //tag_vtable_func destroy;
     tag_vtable_func read;
     tag_vtable_func status;
     tag_vtable_func write;
@@ -73,19 +77,18 @@ typedef plc_tag_p (*tag_create_function)(attr attributes);
  * The base type only has a vtable for operations.
  */
 
-#define TAG_BASE_STRUCT tag_vtable_p vtable; \
-                        mutex_p mut; \
+#define TAG_BASE_STRUCT struct liveobj_t liveobj; \
+                        tag_vtable_p vtable; \
+                        mutex_p api_mutex; \
+                        mutex_p external_mutex; \
                         int status; \
-                        int endian; \
                         int tag_id; \
                         int64_t read_cache_expire; \
                         int64_t read_cache_ms; \
                         int size; \
                         uint8_t *data
 
-struct plc_tag_dummy {
-    int tag_id;
-};
+
 
 struct plc_tag_t {
     TAG_BASE_STRUCT;
@@ -97,10 +100,12 @@ struct plc_tag_t {
 /* the following may need to be used where the tag is already mapped or is not yet mapped */
 extern int lib_init(void);
 extern void lib_teardown(void);
-extern int plc_tag_abort_mapped(plc_tag_p tag);
-extern int plc_tag_destroy_mapped(plc_tag_p tag);
-extern int plc_tag_status_mapped(plc_tag_p tag);
 
+//extern int plc_tag_abort_mapped(plc_tag_p tag);
+//extern int plc_tag_destroy_mapped(plc_tag_p tag);
+//extern int plc_tag_status_mapped(plc_tag_p tag);
 
+extern int plc_tag_init(plc_tag_p tag, attr attribs);
+extern int plc_tag_deinit(plc_tag_p tag);
 
 #endif

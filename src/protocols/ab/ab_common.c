@@ -60,11 +60,17 @@
 
 
 /* default vtable */
-struct tag_vtable_t default_vtable = { (tag_tickler_func)NULL, (tag_vtable_func)NULL, (tag_vtable_func)ab_tag_destroy, (tag_vtable_func)NULL, (tag_vtable_func)NULL, (tag_vtable_func)NULL };
+struct tag_vtable_t default_vtable = {  (tag_handler_func)NULL, 
+                                        (tag_vtable_func)NULL, 
+                                        (tag_vtable_func)NULL, 
+                                        (tag_vtable_func)NULL, 
+                                        (tag_vtable_func)NULL };
 
 
 /* forward declarations*/
 tag_vtable_p set_tag_vtable(ab_tag_p tag);
+
+static void tag_destroy(ab_tag_p tag);
 
 /*
  * Public functions.
@@ -103,6 +109,7 @@ plc_tag_p ab_tag_create(attr attribs)
     const char *path;
     int num_retries;
     int default_retry_interval;
+    int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO,"Starting.");
 
@@ -111,15 +118,20 @@ plc_tag_p ab_tag_create(attr attribs)
      * we have a vehicle for returning status.
      */
 
-    tag = (ab_tag_p)mem_alloc(sizeof(struct ab_tag_t));
+    tag = (ab_tag_p)rc_alloc(sizeof(struct ab_tag_t),(rc_cleanup_func)tag_destroy);
 
     if(!tag) {
         pdebug(DEBUG_ERROR,"Unable to allocate memory for AB EIP tag!");
-        return PLC_TAG_P_NULL;
+        return NULL;
     }
 
-
     pdebug(DEBUG_DETAIL, "tag=%p", tag);
+    
+    rc = plc_tag_init((plc_tag_p)tag, attribs);
+    if(rc != PLCTAG_STATUS_OK) {
+        tag->status = rc;
+        return (plc_tag_p)tag;
+    }
 
     /*
      * we got far enough to allocate memory, set the default vtable up
@@ -135,13 +147,13 @@ plc_tag_p ab_tag_create(attr attribs)
      */
 
     if(check_cpu(tag, attribs) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN,"CPU type not valid or missing.");
+        pdebug(DEBUG_WARN,"PLC/CPU type not valid or missing.");
         tag->status = PLCTAG_ERR_BAD_DEVICE;
         return (plc_tag_p)tag;
     }
 
     /* AB PLCs are little endian. */
-    tag->endian = PLCTAG_DATA_LITTLE_ENDIAN;
+    //tag->endian = PLCTAG_DATA_LITTLE_ENDIAN;
 
     /* allocate memory for the data */
     tag->elem_count = attr_get_int(attribs,"elem_count",1);
@@ -346,7 +358,7 @@ tag_vtable_p set_tag_vtable(ab_tag_p tag)
  * that locks the tag's mutex or only from a single thread.
  */
 
-int ab_tag_abort(ab_tag_p tag)
+int tag_abort(ab_tag_p tag)
 {
     int i;
 
@@ -367,16 +379,14 @@ int ab_tag_abort(ab_tag_p tag)
 }
 
 /*
- * ab_tag_destroy
+ * tag_destroy
  *
- * This blocks on the global library mutex.  This should
- * be fixed to allow for more parallelism.  For now, safety is
- * the primary concern.
+ * Clean up an AB tag after the last reference is gone.
  */
 
-int ab_tag_destroy(ab_tag_p tag)
+void tag_destroy(ab_tag_p tag)
 {
-    int rc = PLCTAG_STATUS_OK;
+//    int rc = PLCTAG_STATUS_OK;
     ab_connection_p connection = NULL;
     ab_session_p session = NULL;
 
@@ -385,11 +395,14 @@ int ab_tag_destroy(ab_tag_p tag)
     /* already destroyed? */
     if (!tag) {
         pdebug(DEBUG_WARN,"Tag pointer is null!");
-        rc = PLCTAG_ERR_NULL_PTR;
-        //~ break;
-        return rc;
+        //rc = PLCTAG_ERR_NULL_PTR;
+        return;
     }
+    
+    /* just in case abort anything in flight. */
+    tag_abort(tag);
 
+    /* get rid of all lingering other objects. */
     connection = tag->connection;
     session = tag->session;
 
@@ -429,13 +442,16 @@ int ab_tag_destroy(ab_tag_p tag)
     }
 
     /* release memory */
-    mem_free(tag);
+    //mem_free(tag);
+    
+    /* free any generic parts. */
+    plc_tag_deinit((plc_tag_p)tag);
 
     pdebug(DEBUG_INFO,"Finished releasing all tag resources.");
 
     pdebug(DEBUG_INFO, "done");
 
-    return rc;
+    //return rc;
 }
 
 

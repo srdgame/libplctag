@@ -51,9 +51,9 @@ static int write_start(ab_tag_p tag);
 
 
 
-struct tag_vtable_t plc5_vtable = { (tag_tickler_func)NULL, 
-                                     (tag_vtable_func)ab_tag_abort, 
-                                     (tag_vtable_func)ab_tag_destroy, 
+struct tag_vtable_t plc5_vtable = { (tag_handler_func)NULL, 
+                                     (tag_vtable_func)tag_abort, 
+                                     //(tag_vtable_func)ab_tag_destroy, 
                                      (tag_vtable_func)read_start, 
                                      (tag_vtable_func)tag_status, 
                                      (tag_vtable_func)write_start };

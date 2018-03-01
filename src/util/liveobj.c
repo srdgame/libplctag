@@ -28,32 +28,29 @@
 
 #define MAX_LIVE_OBJS (8192)
 
-typedef struct {
-    int type;
-//    lock_t lock;
-    rc_ptr obj;
-} liveobject_t;
+//typedef struct {
+//    int type;
+////    lock_t lock;
+//    rc_ptr obj;
+//} liveobject_t;
 
 
-typedef struct {
-    liveobj_func obj_func;
-} *dummy_obj_p;
 
 #define TYPE_FROM_NEXT(n) (uint16_t)(-n)
 
-static liveobject_t liveobjs[MAX_LIVE_OBJS];
+static liveobj_p liveobjs[MAX_LIVE_OBJS];
 static volatile int last_alloc_index = (MAX_LIVE_OBJS/2);
 static mutex_p liveobj_mutex = NULL;
 static thread_p liveobj_thread = NULL;
 
 static THREAD_FUNC(liveobj_tickler);
 static int find_next_free_unsafe(int initial_index);
-static void mark_free_unsafe(int index);
+//static void mark_free_unsafe(int index);
 
 
 
 
-int liveobj_add(rc_ptr obj, int type)
+int liveobj_add(liveobj_p obj, int type, liveobj_func obj_func)
 {
     int index = PLCTAG_ERR_NO_RESOURCES;
     
@@ -63,8 +60,12 @@ int liveobj_add(rc_ptr obj, int type)
         if(index != PLCTAG_ERR_NO_RESOURCES) {
             last_alloc_index = index;
             
-            liveobjs[index].obj = rc_weak_inc(obj);
-            liveobjs[index].type = type;
+            obj->type = type;
+            obj->obj_func = obj_func;
+
+            /* add a weak reference. */
+            rc_weak_inc(obj);
+
             break;
         }
     }
@@ -73,10 +74,10 @@ int liveobj_add(rc_ptr obj, int type)
 }
 
 
-rc_ptr liveobj_get(int id)
+liveobj_p liveobj_get(int id)
 {
-    rc_ptr obj = NULL;
-    rc_ptr dead_obj = NULL;
+    liveobj_p obj = NULL;
+    liveobj_p dead_obj = NULL;
     
     if(id < 0 || id >= MAX_LIVE_OBJS) {
         pdebug(DEBUG_WARN,"Illegal index!");
@@ -85,17 +86,17 @@ rc_ptr liveobj_get(int id)
     
     critical_block(liveobj_mutex) {
         /* is there something here? */
-        if(liveobjs[id].obj) {
+        if(liveobjs[id]) {
             /* try to get a strong reference. */
-            obj = rc_inc(liveobjs[id].obj);
+            obj = rc_inc(liveobjs[id]);
             
             /* was there only a weak ref? */
-            if(!obj && liveobjs[id].obj) {
+            if(!obj && liveobjs[id]) {
                 /* save this for later. */
-                dead_obj = liveobjs[id].obj;
+                dead_obj = liveobjs[id];
 
                 /* make sure no one gets it by accident. */
-                mark_free_unsafe(id);
+                liveobjs[id] = NULL;
             }
         }
     }
@@ -118,9 +119,8 @@ int liveobj_remove(int id)
     }
     
     critical_block(liveobj_mutex) {
-        if(liveobjs[id].obj) {
-            rc_weak_dec(liveobjs[id].obj);
-            mark_free_unsafe(id);
+        if(liveobjs[id]) {
+            liveobjs[id] = rc_weak_dec(liveobjs[id]);
         } else {
             result = PLCTAG_ERR_NOT_FOUND;
         }
@@ -132,16 +132,16 @@ int liveobj_remove(int id)
 
 
 
-rc_ptr liveobj_find(liveobj_find_func finder, void *arg)
+liveobj_p liveobj_find(liveobj_find_func finder, void *arg)
 {
     rc_ptr result = NULL;
     
     critical_block(liveobj_mutex) {
         for(int index = 0; index < MAX_LIVE_OBJS; index++) {
-            if(liveobjs[index].obj) {
-                rc_ptr obj = rc_inc(liveobjs[index].obj);
+            if(liveobjs[index]) {
+                liveobj_p obj = rc_inc(liveobjs[index]);
                 
-                if(obj && finder(obj, liveobjs[index].type, arg) == PLCTAG_STATUS_OK) {
+                if(obj && finder(obj, obj->type, arg) == PLCTAG_STATUS_OK) {
                     /* found! */
                     result = obj;
                     break;
@@ -167,8 +167,8 @@ int liveobj_setup()
     /* set up the object array. */
     for(int i=0; i < MAX_LIVE_OBJS; i++) {
         //liveobjs[i].lock = LOCK_INIT;
-        liveobjs[i].type = LIVEOBJ_TYPE_FREE;
-        liveobjs[i].obj = NULL;
+        //liveobjs[i].type = LIVEOBJ_TYPE_FREE;
+        liveobjs[i] = NULL;
     }
 
     /* we do not initialize the last one, that is a sentinal */
@@ -206,8 +206,8 @@ void liveobj_teardown()
     
     /* purge all the remaining objects. */
     for(int i=0; i < MAX_LIVE_OBJS; i++) {
-        if(liveobjs[i].obj) {
-            rc_weak_dec(liveobjs[i].obj);
+        if(liveobjs[i]) {
+            rc_weak_dec(liveobjs[i]);
         }
     }
     
@@ -220,7 +220,7 @@ int find_next_free_unsafe(int initial_index)
     for(int offset=0; offset < MAX_LIVE_OBJS; offset++) {
         int index = (offset + initial_index) % MAX_LIVE_OBJS;
         
-        if(liveobjs[index].type == LIVEOBJ_TYPE_FREE) {
+        if(!liveobjs[index]) {
             return index;
         }
     }
@@ -228,17 +228,17 @@ int find_next_free_unsafe(int initial_index)
     return PLCTAG_ERR_NO_RESOURCES;
 }
 
-/* hold the mutex before calling! */
-void mark_free_unsafe(int index)
-{
-    if(index <0 || index >= MAX_LIVE_OBJS) {
-        pdebug(DEBUG_WARN, "Called with illegal index %d!", index);
-        return;
-    }
-    
-    liveobjs[index].obj = NULL;
-    liveobjs[index].type = LIVEOBJ_TYPE_FREE;
-}
+///* hold the mutex before calling! */
+//void mark_free_unsafe(int index)
+//{
+//    if(index <0 || index >= MAX_LIVE_OBJS) {
+//        pdebug(DEBUG_WARN, "Called with illegal index %d!", index);
+//        return;
+//    }
+//    
+//    liveobjs[index].obj = NULL;
+//    liveobjs[index].type = LIVEOBJ_TYPE_FREE;
+//}
 
 
 THREAD_FUNC(liveobj_tickler)
@@ -249,16 +249,14 @@ THREAD_FUNC(liveobj_tickler)
     
     while(!library_terminating) {
         for(int index=0; index < MAX_LIVE_OBJS; index++) {
-            rc_ptr obj = NULL;
+            liveobj_p obj = NULL;
             
             /* see if there is an object, if so, run it. */
             obj = liveobj_get(index);
             
             if(obj) {
                 /* something is there, run it. */
-                dummy_obj_p dummy = (dummy_obj_p)obj;
-                
-                dummy->obj_func(obj);
+                obj->obj_func(obj);
                 
                 /* release the reference. */
                 rc_dec(obj);

@@ -26,13 +26,23 @@
 
 #define LIVEOBJ_TYPE_FREE (0)
 
-typedef void (*liveobj_func)(rc_ptr obj);
-typedef int (*liveobj_find_func)(rc_ptr obj, int type, void *arg);
+typedef struct liveobj_t *liveobj_p;
 
-extern int liveobj_add(rc_ptr obj, int type);
-extern rc_ptr liveobj_get(int id);
+typedef void (*liveobj_func)(liveobj_p obj);
+typedef int (*liveobj_find_func)(liveobj_p obj, int type, void *arg);
+
+struct liveobj_t {
+    int id;
+    int type;
+    liveobj_func obj_func;
+};
+
+
+
+extern int liveobj_add(liveobj_p obj, int type, liveobj_func obj_func);
+extern liveobj_p liveobj_get(int id);
 extern int liveobj_remove(int id);
-extern void *liveobj_find(liveobj_find_func finder, void *arg);
+extern liveobj_p liveobj_find(liveobj_find_func finder, void *arg);
 
 extern int liveobj_setup();
 extern void liveobj_teardown();

@@ -39,9 +39,9 @@ static int tag_status(ab_tag_p tag);
 static int tag_read_start(ab_tag_p tag);
 static int tag_write_start(ab_tag_p tag);
 
-struct tag_vtable_t micro800_vtable = { (tag_tickler_func)NULL, 
-                                     (tag_vtable_func)ab_tag_abort, 
-                                     (tag_vtable_func)ab_tag_destroy, 
+struct tag_vtable_t micro800_vtable = { (tag_handler_func)NULL, 
+                                     (tag_vtable_func)tag_abort, 
+                                     //(tag_vtable_func)ab_tag_destroy, 
                                      (tag_vtable_func)tag_read_start, 
                                      (tag_vtable_func)tag_status, 
                                      (tag_vtable_func)tag_write_start };
@@ -823,7 +823,7 @@ static int check_read_status_connected(ab_tag_p tag)
                 rc = tag_read_start(tag);
             } else {
                 pdebug(DEBUG_WARN, "Insufficient data read for tag!");
-                ab_tag_abort(tag);
+                tag_abort(tag);
                 rc = PLCTAG_ERR_READ;
             }
         } else {
@@ -833,7 +833,7 @@ static int check_read_status_connected(ab_tag_p tag)
             tag->read_in_progress = 0;
 
             /* have the IO thread take care of the request buffers */
-            ab_tag_abort(tag);
+            tag_abort(tag);
 
             /* if this is a pre-read for a write, then pass off the the write routine */
             if (tag->pre_write_read) {
@@ -938,7 +938,7 @@ static int check_write_status_connected(ab_tag_p tag)
     }
 
     /* this triggers the clean up */
-    ab_tag_abort(tag);
+    tag_abort(tag);
 
     tag->write_in_progress = 0;
 

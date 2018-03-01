@@ -24,10 +24,10 @@
 #include <platform.h>
 
 typedef void *rc_ptr;
-typedef void (*rc_cleanup_func)(void *arg);
+typedef void (*rc_cleanup_func)(rc_ptr arg);
 
 extern rc_ptr rc_alloc(int size, rc_cleanup_func cleanup_func);
-extern rc_ptr rc_inc(void *data);
-extern rc_ptr rc_dec(void *data);
-extern rc_ptr rc_weak_inc(void *data);
-extern rc_ptr rc_weak_dec(void *data);
+extern rc_ptr rc_inc(rc_ptr data);
+extern rc_ptr rc_dec(rc_ptr data);
+extern rc_ptr rc_weak_inc(rc_ptr data);
+extern rc_ptr rc_weak_dec(rc_ptr data);

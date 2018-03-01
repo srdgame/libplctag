@@ -42,7 +42,7 @@
 
 struct ab_session_t {
     /* required for live objects */
-    liveobj_func session_obj_func;
+    struct liveobj_t liveobj;
     int liveobj_id;
     
     int registered;
@@ -103,7 +103,7 @@ mutex_p global_session_mut = NULL;
 static ab_session_p session_create_unsafe(const char* host, int gw_port);
 static int session_init(ab_session_p session);
 static int add_session_unsafe(ab_session_p n);
-static int find_session_by_host_unsafe(rc_ptr obj, int type, void *host_arg);
+static int find_session_by_host_unsafe(liveobj_p obj, int type, void *host_arg);
 static int session_connect(ab_session_p session);
 static void session_destroy(rc_ptr session);
 static int session_register(ab_session_p session);
@@ -315,7 +315,7 @@ int session_find_or_create(ab_session_p *tag_session, attr attribs)
         /* if we are to share sessions, then look for an existing one. */
         if (shared_session) {
             /* this returns a strong reference */
-            session = liveobj_find(find_session_by_host_unsafe, (void *)session_gw);
+            session = (ab_session_p)liveobj_find(find_session_by_host_unsafe, (void *)session_gw);
         } else {
             /* no sharing, create a new one */
             session = AB_SESSION_NULL;
@@ -346,7 +346,7 @@ int add_session_unsafe(ab_session_p session)
 {
     pdebug(DEBUG_DETAIL, "Starting");
 
-    session->liveobj_id = liveobj_add(session, LIVEOBJ_TYPE_SESSION);
+    session->liveobj_id = liveobj_add((liveobj_p)session, LIVEOBJ_TYPE_AB_PLC, (liveobj_func)session_handler);
     
     if(session->liveobj_id < 0) {
         /* error! */
@@ -392,13 +392,13 @@ static int session_match_valid(const char *host, ab_session_p session)
 }
 
 
-int find_session_by_host_unsafe(rc_ptr obj, int type, void *host_arg)
+int find_session_by_host_unsafe(liveobj_p obj, int type, void *host_arg)
 {
     ab_session_p session;
     
     pdebug(DEBUG_SPEW,"Starting.");
 
-    if(type == LIVEOBJ_TYPE_SESSION) {
+    if(type == LIVEOBJ_TYPE_AB_PLC) {
         session = (ab_session_p)obj;
         
         if(session_match_valid((const char*)host_arg, session)) {
@@ -434,7 +434,7 @@ ab_session_p session_create_unsafe(const char* host, int gw_port)
     }
     
     /* set the function to handle this object */
-    session->session_obj_func = (liveobj_func)session_handler;
+    //session->session_obj_func = (liveobj_func)session_handler;
 
     str_copy(session->host, MAX_SESSION_HOST, host);
 

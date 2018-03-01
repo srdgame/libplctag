@@ -45,9 +45,9 @@ static int tag_status(ab_tag_p tag);
 static int tag_read_start(ab_tag_p tag);
 static int tag_write_start(ab_tag_p tag);
 
-struct tag_vtable_t plc5_dhp_vtable = { (tag_tickler_func)NULL, 
-                                        (tag_vtable_func)ab_tag_abort, 
-                                        (tag_vtable_func)ab_tag_destroy, 
+struct tag_vtable_t plc5_dhp_vtable = { (tag_handler_func)NULL, 
+                                        (tag_vtable_func)tag_abort, 
+                                        //(tag_vtable_func)ab_tag_destroy, 
                                         (tag_vtable_func)tag_read_start, 
                                         (tag_vtable_func)tag_status, 
                                         (tag_vtable_func)tag_write_start };
@@ -505,7 +505,7 @@ static int check_read_status(ab_tag_p tag)
     } while(0);
 
     /* clean up request */
-    ab_tag_abort(tag);
+    tag_abort(tag);
 
     tag->read_in_progress = 0;
 
@@ -583,7 +583,7 @@ static int check_write_status(ab_tag_p tag)
     tag->write_in_progress = 0;
 
     /* clean up any outstanding requests. */
-    ab_tag_abort(tag);
+    tag_abort(tag);
 
     pdebug(DEBUG_INFO,"Done.");
 

@@ -110,6 +110,7 @@ extern char **str_split(const char *str, const char *sep);
 typedef struct mutex_t *mutex_p;
 extern int mutex_create(mutex_p *m);
 extern int mutex_lock(mutex_p m);
+extern int mutex_try_lock(mutex_p m);
 extern int mutex_unlock(mutex_p m);
 extern int mutex_destroy(mutex_p *m);
 
