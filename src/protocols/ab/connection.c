@@ -181,9 +181,9 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
         return NULL;
     }
 
-    connection->session = tag->session;
+    connection->session = rc_inc(tag->session);
     connection->conn_seq_num = 1 /*(uint16_t)(intptr_t)(connection)*/;
-    connection->orig_connection_id = session_get_new_connection_id_unsafe(connection->session);
+    connection->orig_connection_id = session_get_new_connection_id(connection->session);
     connection->status = PLCTAG_STATUS_PENDING;
     connection->exclusive = !shared;
 
@@ -223,8 +223,9 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
 
     /* add the connection to the session */
     /* FIXME - these could fail! */
-    connection->session = rc_inc(connection->session);
-    session_add_connection_unsafe(connection->session, connection);
+    //connection->session = rc_inc(connection->session);
+    //session_add_connection_unsafe(connection->session, connection);
+    session_add_connection(connection->session, connection);
 
     pdebug(DEBUG_INFO, "Done.");
 
