@@ -46,6 +46,7 @@ extern "C"
 #include <ab/ab.h>
 #include <util/attr.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 #define CONNECTION_SETUP_TIMEOUT (1500)

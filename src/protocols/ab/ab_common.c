@@ -43,6 +43,7 @@
 #include <ab/request.h>
 #include <util/attr.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 

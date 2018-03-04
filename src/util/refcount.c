@@ -22,6 +22,7 @@
 #include <platform.h>
 #include <lib/libplctag.h>
 #include <util/debug.h>
+#include <util/mem.h>
 #include <util/refcount.h>
 
 

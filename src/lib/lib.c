@@ -32,6 +32,7 @@
 #include <util/attr.h>
 #include <util/debug.h>
 #include <util/liveobj.h>
+#include <util/mem.h>
 
 
 

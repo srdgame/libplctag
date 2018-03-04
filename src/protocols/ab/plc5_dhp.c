@@ -38,6 +38,7 @@
 #include <ab/session.h>
 #include <ab/eip.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 

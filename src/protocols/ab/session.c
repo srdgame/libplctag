@@ -33,6 +33,7 @@
 #include <ab/request.h>
 #include <ab/eip.h>
 #include <util/debug.h>
+#include <util/mem.h>
 #include <util/refcount.h>
 #include <stdlib.h>
 #include <time.h>

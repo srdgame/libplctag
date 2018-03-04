@@ -40,6 +40,7 @@ extern "C"
 #include <ab/session.h>
 #include <ab/eip.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 static int check_read_status(ab_tag_p tag);

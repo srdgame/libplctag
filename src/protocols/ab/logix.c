@@ -46,6 +46,7 @@
 #include <ab/error_codes.h>
 #include <util/attr.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 

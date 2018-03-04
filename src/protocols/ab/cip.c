@@ -35,6 +35,7 @@
 #include <ab/tag.h>
 #include <ab/eip.h>
 #include <util/debug.h>
+#include <util/mem.h>
 
 
 static int match_channel(const char **p, int *dhp_channel)
