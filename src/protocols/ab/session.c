@@ -538,6 +538,8 @@ THREAD_FUNC(session_init)
         session->status = rc;
     }
     
+    /* record how we did. */
+    session->status = rc;    
     
     pdebug(DEBUG_INFO, "Done.");
 
@@ -1525,6 +1527,7 @@ void session_handler(ab_session_p session)
         /* do we need to initialize the session? */
         if(!session->registered) {
             if(!session->setup_thread) {
+                pdebug(DEBUG_INFO,"Starting thread to set up session.");
                 /* kick off a thread to handle the blocking parts of the session creation. */
                 session->status = PLCTAG_STATUS_PENDING;
                 

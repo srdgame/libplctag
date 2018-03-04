@@ -62,9 +62,9 @@ int liveobj_add(liveobj_p obj, int type, liveobj_func obj_func)
             
             obj->type = type;
             obj->obj_func = obj_func;
-
-            /* add a weak reference. */
-            rc_weak_inc(obj);
+            
+            /* put the object into the live object array. */
+            liveobjs[index] = rc_weak_inc(obj);
 
             break;
         }
@@ -255,6 +255,7 @@ THREAD_FUNC(liveobj_tickler)
             obj = liveobj_get(index);
             
             if(obj) {
+                pdebug(DEBUG_DETAIL,"Found something to run! %p",obj);
                 /* something is there, run it. */
                 obj->obj_func(obj);
                 
