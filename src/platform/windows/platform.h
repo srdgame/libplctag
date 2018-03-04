@@ -91,10 +91,10 @@ extern "C"
 
 
 /* memory functions/defs */
-extern void *mem_alloc(int size);
-extern void mem_free(const void *mem);
-extern void mem_set(void *d1, int c, int size);
-extern void mem_copy(void *d1, void *d2, int size);
+//extern void *mem_alloc(int size);
+//extern void mem_free(const void *mem);
+//extern void mem_set(void *d1, int c, int size);
+//extern void mem_copy(void *d1, void *d2, int size);
 
 /* string functions/defs */
 extern int str_cmp(const char *first, const char *second);

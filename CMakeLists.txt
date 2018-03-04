@@ -157,6 +157,8 @@ set ( libplctag_SRCS
                      "${util_SRC_PATH}/liveobj.c"
                      "${util_SRC_PATH}/liveobj.h"
                      "${util_SRC_PATH}/macros.h"
+                     "${util_SRC_PATH}/mem.c"
+                     "${util_SRC_PATH}/mem.h"
                      "${util_SRC_PATH}/refcount.c"
                      "${util_SRC_PATH}/refcount.h"
                      "${platform_SRC_PATH}/platform.c"

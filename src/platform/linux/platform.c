@@ -49,6 +49,8 @@
 
 #include <lib/libplctag.h>
 #include <util/debug.h>
+#include <util/mem.h>
+
 
 
 
@@ -56,66 +58,66 @@
  ******************************* Memory ************************************
  **************************************************************************/
 
-
-
-/*
- * mem_alloc
- *
- * This is a wrapper around the platform's memory allocation routine.
- * It will zero out memory before returning it.
- *
- * It will return NULL on failure.
- */
-extern void *mem_alloc(int size)
-{
-    void *res = calloc(size, 1);
-
-    return res;
-}
-
-
-
-/*
- * mem_free
- *
- * Free the allocated memory passed in.  If the passed pointer is
- * null, do nothing.
- */
-extern void mem_free(const void *mem)
-{
-    if(mem) {
-        free((void *)mem);
-    }
-}
-
-
-
-
-/*
- * mem_set
- *
- * set memory to the passed argument.
- */
-extern void mem_set(void *d1, int c, int size)
-{
-    memset(d1, c, size);
-}
-
-
-
-
-
-/*
- * mem_copy
- *
- * copy memory from one pointer to another for the passed number of bytes.
- */
-extern void mem_copy(void *d1, void *d2, int size)
-{
-    memcpy(d1, d2, size);
-}
-
-
+//
+//
+///*
+// * mem_alloc
+// *
+// * This is a wrapper around the platform's memory allocation routine.
+// * It will zero out memory before returning it.
+// *
+// * It will return NULL on failure.
+// */
+//extern void *mem_alloc(int size)
+//{
+//    void *res = calloc(size, 1);
+//
+//    return res;
+//}
+//
+//
+//
+///*
+// * mem_free
+// *
+// * Free the allocated memory passed in.  If the passed pointer is
+// * null, do nothing.
+// */
+//extern void mem_free(const void *mem)
+//{
+//    if(mem) {
+//        free((void *)mem);
+//    }
+//}
+//
+//
+//
+//
+///*
+// * mem_set
+// *
+// * set memory to the passed argument.
+// */
+//extern void mem_set(void *d1, int c, int size)
+//{
+//    memset(d1, c, size);
+//}
+//
+//
+//
+//
+//
+///*
+// * mem_copy
+// *
+// * copy memory from one pointer to another for the passed number of bytes.
+// */
+//extern void mem_copy(void *d1, void *d2, int size)
+//{
+//    memcpy(d1, d2, size);
+//}
+//
+//
 
 
 /***************************************************************************
