@@ -121,7 +121,7 @@ int tag_status(ab_tag_p tag)
         session_rc = PLCTAG_ERR_CREATE;
     }
 
-    connection_rc = tag->connection->status;
+    connection_rc = connection_status(tag->connection);
     
     /* now collect the status.  Highest level wins. */
     rc = session_rc;

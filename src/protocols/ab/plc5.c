@@ -89,7 +89,7 @@ int tag_status(ab_tag_p tag)
 
     if(tag->needs_connection) {
         if(tag->connection) {
-            connection_rc = tag->connection->status;
+            connection_rc = connection_status(tag->connection);
         } else {
             /* fatal! */
             connection_rc = PLCTAG_ERR_CREATE;

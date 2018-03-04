@@ -40,6 +40,7 @@
 
 
 
+
 struct ab_session_t {
     /* required for live objects */
     struct liveobj_t liveobj;
@@ -88,8 +89,8 @@ struct ab_session_t {
     uint32_t recv_offset;
     uint8_t recv_data[MAX_REQ_RESP_SIZE];
 
-    /* connections for this session */
-    ab_connection_p connections;
+    /* connection for this session */
+    ab_connection_p connection;
     uint32_t conn_serial_number; /* id for the next connection */
 };
 
@@ -159,13 +160,13 @@ static int connection_is_usable_unsafe(ab_connection_p connection)
         return 0;
     }
 
-    if(connection->exclusive) {
-        return 0;
-    }
-
-    if(connection->disconnect_in_progress) {
-        return 0;
-    }
+//    if(connection->exclusive) {
+//        return 0;
+//    }
+//
+//    if(connection->disconnect_in_progress) {
+//        return 0;
+//    }
 
     return 1;
 }
@@ -175,8 +176,10 @@ static int connection_is_usable_unsafe(ab_connection_p connection)
 ab_connection_p session_find_connection_by_path_unsafe(ab_session_p session,const char *path)
 {
     ab_connection_p connection;
+    
+    (void)path;
 
-    connection = session->connections;
+    connection = session->connection;
 
     /*
      * there are a lot of conditions.
@@ -184,16 +187,17 @@ ab_connection_p session_find_connection_by_path_unsafe(ab_session_p session,cons
      * We do not want to use connections that are used exclusively by one tag.
      * We want to use connections that have the same path as the tag.
      */
-    while (connection && !connection_is_usable_unsafe(connection) && str_cmp_i(connection->path, path) != 0) {
-        connection = connection->next;
-    }
+//    while (connection && !connection_is_usable_unsafe(connection) && str_cmp_i(connection_path(connection), path) != 0) {
+//        connection = connection->next;
+//    }
 
-    /* add to the ref count since we found an existing one. */
-    if(connection) {
-        rc_inc(connection);
-    }
 
-    return connection;
+//    /* add to the ref count since we found an existing one. */
+//    if(connection) {
+//        rc_inc(connection);
+//    }
+
+    return rc_inc(connection);
 }
 
 
@@ -203,8 +207,14 @@ int session_add_connection_unsafe(ab_session_p session, ab_connection_p connecti
     pdebug(DEBUG_DETAIL, "Starting");
 
     /* add the connection to the list in the session */
-    connection->next = session->connections;
-    session->connections = connection;
+//    connection->next = session->connections;
+//    session->connections = connection;
+
+    if(session->connection) {
+        pdebug(DEBUG_WARN, "A connection already exists!");
+    } else {
+        session->connection = connection;
+    }
 
     pdebug(DEBUG_DETAIL, "Done");
 
@@ -237,32 +247,39 @@ int session_add_connection(ab_session_p session, ab_connection_p connection)
 /* must have the session mutex held here. */
 int session_remove_connection_unsafe(ab_session_p session, ab_connection_p connection)
 {
-    ab_connection_p cur;
-    ab_connection_p prev;
+//    ab_connection_p cur;
+//    ab_connection_p prev;
     /* int debug = session->debug; */
-    int rc;
+    int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_DETAIL, "Starting");
-
-    cur = session->connections;
-    prev = NULL;
-
-    while (cur && cur != connection) {
-        prev = cur;
-        cur = cur->next;
+    
+    if(session->connection != connection) {
+        pdebug(DEBUG_WARN,"Wrong connection!");
+        return PLCTAG_ERR_NOT_FOUND;
     }
+    
+    session->connection = NULL;
 
-    if (cur && cur == connection) {
-        if (prev) {
-            prev->next = cur->next;
-        } else {
-            session->connections = cur->next;
-        }
-
-        rc = PLCTAG_STATUS_OK;
-    } else {
-        rc = PLCTAG_ERR_NOT_FOUND;
-    }
+//    cur = session->connections;
+//    prev = NULL;
+//
+//    while (cur && cur != connection) {
+//        prev = cur;
+//        cur = cur->next;
+//    }
+//
+//    if (cur && cur == connection) {
+//        if (prev) {
+//            prev->next = cur->next;
+//        } else {
+//            session->connections = cur->next;
+//        }
+//
+//        rc = PLCTAG_STATUS_OK;
+//    } else {
+//        rc = PLCTAG_ERR_NOT_FOUND;
+//    }
 
     pdebug(DEBUG_DETAIL, "Done");
 
@@ -964,12 +981,13 @@ int send_eip_request_unsafe(ab_request_p req)
             eip_cip_co_req *conn_req = (eip_cip_co_req*)(req->data);
 
             /* set up the connection information */
-            conn_req->cpf_targ_conn_id = h2le32(req->connection->targ_connection_id);
-            req->conn_id = req->connection->orig_connection_id;
+            conn_req->cpf_targ_conn_id = h2le32(connection_targ_id(req->connection));
+            req->conn_id = connection_orig_id(req->connection);
 
-            req->connection->conn_seq_num++;
-            conn_req->cpf_conn_seq_num = h2le16(req->connection->conn_seq_num);
-            req->conn_seq = req->connection->conn_seq_num;
+            //req->connection->conn_seq_num++;
+            req->conn_seq = connection_next_seq(req->connection);
+            conn_req->cpf_conn_seq_num = h2le16(req->conn_seq);
+            
 
             /* mark the connection as being used. */
             //~ mark_connection_for_request(req);

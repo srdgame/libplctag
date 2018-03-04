@@ -48,6 +48,86 @@ extern "C"
 #include <util/debug.h>
 
 
+#define CONNECTION_SETUP_TIMEOUT (1500)
+#define CONNECTION_TEARDOWN_TIMEOUT (1500)
+
+#define CONNECTION_MAX_IN_FLIGHT (7)
+
+struct ab_connection_t {
+    ab_connection_p next;
+
+    char path[MAX_CONN_PATH];
+
+    ab_session_p session;
+
+    uint32_t targ_connection_id; /* the ID the target uses for this connection. */
+    uint32_t orig_connection_id; /* the ID we use for this connection */
+    uint16_t packet;
+    uint16_t conn_serial_number;
+    uint16_t conn_seq_num;
+
+    /* need to save the connection path for later */
+    uint8_t conn_path[MAX_CONN_PATH];
+    uint8_t conn_path_size;
+
+    /* how do we talk to this device? */
+    int protocol_type;
+    int use_dhp_direct;
+    uint8_t dhp_src;
+    uint8_t dhp_dest;
+    uint16_t conn_params;
+
+    /* useful status */
+    int is_connected;
+    int connect_in_progress;
+    int disconnect_in_progress;
+    //int exclusive;
+    int status;
+
+    /* flag to avoid packet loss */
+    //int request_in_flight[CONNECTION_MAX_IN_FLIGHT];
+    //uint16_t seq_in_flight[CONNECTION_MAX_IN_FLIGHT];
+
+    /* maintain a ref count. */
+    //refcount rc;
+
+    /* list of tags that belong to this connection */
+    //ab_tag_p tags;
+};
+
+
+
+
+int connection_status(ab_connection_p connection)
+{
+    return connection->status;
+}
+
+const char *connection_path(ab_connection_p connection)
+{
+    return &connection->path[0];
+}
+
+
+uint32_t connection_targ_id(ab_connection_p connection)
+{
+    return connection->targ_connection_id;
+}
+
+uint32_t connection_orig_id(ab_connection_p connection)
+{
+    return connection->orig_connection_id;
+}
+
+
+uint16_t connection_next_seq(ab_connection_p connection)
+{
+    connection->conn_seq_num++;
+    
+    return connection->conn_seq_num;
+}
+
+
 /*
  * Shared global data
  */
@@ -185,7 +265,7 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
     connection->conn_seq_num = 1 /*(uint16_t)(intptr_t)(connection)*/;
     connection->orig_connection_id = session_get_new_connection_id(connection->session);
     connection->status = PLCTAG_STATUS_PENDING;
-    connection->exclusive = !shared;
+//    connection->exclusive = !shared;
 
     /* copy the path for later */
     str_copy(&connection->path[0], MAX_CONN_PATH, path);
