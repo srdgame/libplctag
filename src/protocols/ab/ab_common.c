@@ -111,8 +111,16 @@ plc_tag_p ab_tag_create(attr attribs)
     int num_retries;
     int default_retry_interval;
     int rc = PLCTAG_STATUS_OK;
+    ab_session_p session = NULL;
 
     pdebug(DEBUG_INFO,"Starting.");
+    
+    /* Find out if this is a supported PLC first. */
+    session = session_find_or_create(attribs);
+    if(!session) {
+        pdebug(DEBUG_WARN, "Unsupported AB PLC type!");
+        return NULL;
+    }
 
     /*
      * allocate memory for the new tag.  Do this first so that
@@ -123,10 +131,15 @@ plc_tag_p ab_tag_create(attr attribs)
 
     if(!tag) {
         pdebug(DEBUG_ERROR,"Unable to allocate memory for AB EIP tag!");
+        rc_dec(session);
         return NULL;
     }
 
     pdebug(DEBUG_DETAIL, "tag=%p", tag);
+    
+    /* we were able to create the tag, now put the session into it. */
+    tag->session = session;
+    tag->plc_type = session_plc_type(session);
     
     rc = plc_tag_init((plc_tag_p)tag, attribs);
     if(rc != PLCTAG_STATUS_OK) {
@@ -147,11 +160,11 @@ plc_tag_p ab_tag_create(attr attribs)
      * This determines the protocol type.
      */
 
-    if(check_cpu(tag, attribs) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN,"PLC/CPU type not valid or missing.");
-        tag->status = PLCTAG_ERR_BAD_DEVICE;
-        return (plc_tag_p)tag;
-    }
+//    if(check_cpu(tag, attribs) != PLCTAG_STATUS_OK) {
+//        pdebug(DEBUG_WARN,"PLC/CPU type not valid or missing.");
+//        tag->status = PLCTAG_ERR_BAD_DEVICE;
+//        return (plc_tag_p)tag;
+//    }
 
     /* AB PLCs are little endian. */
     //tag->endian = PLCTAG_DATA_LITTLE_ENDIAN;
@@ -176,15 +189,15 @@ plc_tag_p ab_tag_create(attr attribs)
         return (plc_tag_p)tag;
     }
 
-    /* get the connection path, punt if there is not one and we have a Logix-class PLC. */
-    path = attr_get_str(attribs,"path",NULL);
-
-    if(path == NULL && tag->protocol_type == AB_PROTOCOL_LGX) {
-        pdebug(DEBUG_WARN,"Unable to find or determine base wire protocol type!");
-        tag->status = PLCTAG_ERR_BAD_PARAM;
-        return (plc_tag_p)tag;
-    }
-
+//    /* get the connection path, punt if there is not one and we have a Logix-class PLC. */
+//    path = attr_get_str(attribs,"path",NULL);
+//
+//    if(path == NULL && tag->protocol_type == AB_PROTOCOL_LGX) {
+//        pdebug(DEBUG_WARN,"Unable to find or determine base wire protocol type!");
+//        tag->status = PLCTAG_ERR_BAD_PARAM;
+//        return (plc_tag_p)tag;
+//    }
+//
     tag->first_read = 1;
 
     /* set up retry and other PLC-specific information. */
@@ -273,7 +286,7 @@ plc_tag_p ab_tag_create(attr attribs)
      *
      * All tags need sessions.  They are the TCP connection to the gateway PLC.
      */
-    if(session_find_or_create(&tag->session, attribs) != PLCTAG_STATUS_OK) {
+    if(session_find_or_create(tag, attribs) != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_INFO,"Unable to create session!");
         tag->status = PLCTAG_ERR_BAD_GATEWAY;
         return (plc_tag_p)tag;
@@ -281,12 +294,12 @@ plc_tag_p ab_tag_create(attr attribs)
 
     pdebug(DEBUG_DETAIL, "using session=%p", tag->session);
 
-    if(tag->needs_connection) {
-        /* Find or create a connection.*/
-        if((tag->status = connection_find_or_create(tag, attribs)) != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_INFO,"Unable to create connection! Status=%d",tag->status);
-            return (plc_tag_p)tag;
-        }
+//    if(tag->needs_connection) {
+//        /* Find or create a connection.*/
+//        if((tag->status = connection_find_or_create(tag, attribs)) != PLCTAG_STATUS_OK) {
+//            pdebug(DEBUG_INFO,"Unable to create connection! Status=%d",tag->status);
+//            return (plc_tag_p)tag;
+//        }
 
         /* set up the links between the tag and the connection. */
         //connection_add_tag(tag->connection, tag);

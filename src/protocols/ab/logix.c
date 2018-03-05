@@ -143,16 +143,16 @@ int tag_status(ab_tag_p tag)
         session_rc = PLCTAG_ERR_CREATE;
     }
 
-    if(tag->needs_connection) {
-        if(tag->connection) {
-            connection_rc = connection_status(tag->connection);
-        } else {
-            /* fatal! */
-            connection_rc = PLCTAG_ERR_CREATE;
-        }
-    } else {
-        connection_rc = PLCTAG_STATUS_OK;
-    }
+//    if(tag->needs_connection) {
+//        if(tag->connection) {
+//            connection_rc = connection_status(tag->connection);
+//        } else {
+//            /* fatal! */
+//            connection_rc = PLCTAG_ERR_CREATE;
+//        }
+//    } else {
+//        connection_rc = PLCTAG_STATUS_OK;
+//    }
 
     /* now collect the status.  Highest level wins. */
     rc = session_rc;
