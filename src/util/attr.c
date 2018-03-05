@@ -28,7 +28,9 @@
 #include <util/attr.h>
 #include <platform.h>
 #include <stdio.h>
+#include <util/debug.h>
 #include <util/mem.h>
+#include <util/refcount.h>
 
 
 
@@ -43,8 +45,11 @@ struct attr_t {
     attr_entry head;
 };
 
+typedef struct attr_entry_t *attr_entry;
 
 
+static attr_entry find_entry(attr a, const char *name);
+static void attr_destroy(attr a);
 
 
 /*
@@ -85,7 +90,7 @@ attr_entry find_entry(attr a, const char *name)
  */
 extern attr attr_create()
 {
-    return (attr)mem_alloc(sizeof(struct attr_t));
+    return (attr)rc_alloc(sizeof(struct attr_t), (rc_cleanup_func)attr_destroy);
 }
 
 
@@ -169,7 +174,7 @@ extern attr attr_create_from_str(const char *attr_str)
         }
 
         if(attr_set_str(res, name, val)) {
-            if(res) attr_destroy(res);
+            if(res) rc_dec(res);
             mem_free(tmp);
             return NULL;
         }
@@ -396,7 +401,7 @@ extern int attr_remove(attr attrs, const char *name)
  *
  * Destroy and free all memory for an attribute list.
  */
-extern void attr_destroy(attr a)
+void attr_destroy(attr a)
 {
     attr_entry e, p;
 
@@ -421,6 +426,6 @@ extern void attr_destroy(attr a)
         mem_free(p);
     }
 
-    mem_free(a);
+    // the RC framework will take care of the attr header itself.
 }
 
