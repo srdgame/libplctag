@@ -24,7 +24,7 @@
 #include "utils.h"
 
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.39&path=1,0&cpu=LGX&elem_size=4&elem_count=10&name=TestDINTArray[0]&debug=4"
+#define TAG_PATH "protocol=ab_eip&path=10.206.1.39,1,0&plc=LGX&elem_size=4&elem_count=10&name=TestDINTArray[0]&debug=4"
 #define ELEM_COUNT 10
 #define ELEM_SIZE 4
 #define DATA_TIMEOUT 1000

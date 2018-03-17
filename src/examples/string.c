@@ -32,7 +32,7 @@
  */
 
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.27&path=1,0&cpu=LGX&elem_size=88&elem_count=48&debug=1&name=Loc_Txt"
+#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.27&path=1,0&plc=LGX&elem_size=88&elem_count=48&debug=1&name=Loc_Txt"
 #define ELEM_COUNT 48
 #define ELEM_SIZE 88
 #define DATA_TIMEOUT 1000

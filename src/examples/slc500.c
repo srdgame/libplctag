@@ -3,7 +3,7 @@
 #include "utils.h"
 
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.26&cpu=SLC&elem_size=2&elem_count=1&name=N7:0&debug=1"
+#define TAG_PATH "protocol=ab_eip&path=10.206.1.26&plc=SLC&elem_size=2&elem_count=1&name=N7:0&debug=1"
 #define ELEM_COUNT 1
 #define ELEM_SIZE 2
 #define DATA_TIMEOUT 1000
