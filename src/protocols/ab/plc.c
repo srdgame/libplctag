@@ -45,7 +45,7 @@
 struct ab_plc_t {
     /* required for live objects */
     struct liveobj_t liveobj;
-    int liveobj_id;
+    int id;
     
     int registered;
 
@@ -70,7 +70,7 @@ struct ab_plc_t {
     /* current request being sent, only one at a time */
     ab_request_p current_request;
 
-    /* list of outstanding requests for this session */
+    /* list of outstanding requests for this PLC */
     ab_request_p requests;
 
     /* counter for number of messages in flight */
@@ -90,7 +90,7 @@ struct ab_plc_t {
     uint32_t recv_offset;
     uint8_t recv_data[MAX_REQ_RESP_SIZE];
 
-    /* connection for this session */
+    /* connection for this PLC */
     ab_connection_p connection;
     uint32_t conn_serial_number; /* id for the next connection */
 };
@@ -111,17 +111,17 @@ static ab_plc_p plc_create_unsafe(const char* host, int gw_port);
 static THREAD_FUNC(plc_init);
 static int add_plc_unsafe(ab_plc_p n);
 static int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg);
-static int plc_connect(ab_plc_p session);
-static void plc_destroy(rc_ptr session);
-static int session_register(ab_plc_p session);
-static int session_unregister_unsafe(ab_plc_p session);
+static int plc_connect(ab_plc_p plc);
+static void plc_destroy(rc_ptr plc);
+static int session_register(ab_plc_p plc);
+static int session_unregister_unsafe(ab_plc_p plc);
 
 //static int plc_remove_connection_unsafe(ab_plc_p session, ab_connection_p connection);
-static int plc_remove_request_unsafe(ab_plc_p session, ab_request_p req);
+static int plc_remove_request_unsafe(ab_plc_p plc, ab_request_p req);
 
-static void plc_handler(ab_plc_p session);
-static int plc_check_incoming_data(ab_plc_p session);
-static int plc_check_outgoing_data(ab_plc_p session);
+static void plc_handler(ab_plc_p plc);
+static int plc_check_incoming_data(ab_plc_p plc);
+static int plc_check_outgoing_data(ab_plc_p plc);
 
 
 /*
@@ -174,13 +174,13 @@ uint64_t plc_get_new_seq_id(ab_plc_p sess)
 
 
 
-ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p session,const char *path)
+ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path)
 {
     ab_connection_p connection;
     
     (void)path;
 
-    connection = session->connection;
+    connection = plc->connection;
 
     /*
      * there are a lot of conditions.
@@ -203,18 +203,18 @@ ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p session,const char *
 
 
 
-int plc_add_connection_unsafe(ab_plc_p session, ab_connection_p connection)
+int plc_add_connection_unsafe(ab_plc_p plc, ab_connection_p connection)
 {
     pdebug(DEBUG_DETAIL, "Starting");
 
-    /* add the connection to the list in the session */
+    /* add the connection to the list in the PLC */
 //    connection->next = session->connections;
 //    session->connections = connection;
 
-    if(session->connection) {
+    if(plc->connection) {
         pdebug(DEBUG_WARN, "A connection already exists!");
     } else {
-        session->connection = connection;
+        plc->connection = connection;
     }
 
     pdebug(DEBUG_DETAIL, "Done");
@@ -225,18 +225,18 @@ int plc_add_connection_unsafe(ab_plc_p session, ab_connection_p connection)
 
 
 
-int plc_add_connection(ab_plc_p session, ab_connection_p connection)
+int plc_add_connection(ab_plc_p plc, ab_connection_p connection)
 {
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_DETAIL, "Starting");
 
-    if(session) {
-        critical_block(session->mutex) {
-            rc = plc_add_connection_unsafe(session, connection);
+    if(plc) {
+        critical_block(plc->mutex) {
+            rc = plc_add_connection_unsafe(plc, connection);
         }
     } else {
-        pdebug(DEBUG_WARN, "Session ptr is null!");
+        pdebug(DEBUG_WARN, "PLC ptr is null!");
         rc = PLCTAG_ERR_NULL_PTR;
     }
 
@@ -245,22 +245,22 @@ int plc_add_connection(ab_plc_p session, ab_connection_p connection)
     return rc;
 }
 
-/* must have the session mutex held here. */
-int plc_remove_connection_unsafe(ab_plc_p session, ab_connection_p connection)
+/* must have the PLC mutex held here. */
+int plc_remove_connection_unsafe(ab_plc_p plc, ab_connection_p connection)
 {
 //    ab_connection_p cur;
 //    ab_connection_p prev;
-    /* int debug = session->debug; */
+    /* int debug = plc->debug; */
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_DETAIL, "Starting");
     
-    if(session->connection != connection) {
+    if(plc->connection != connection) {
         pdebug(DEBUG_WARN,"Wrong connection!");
         return PLCTAG_ERR_NOT_FOUND;
     }
     
-    session->connection = NULL;
+    plc->connection = NULL;
 
 //    cur = session->connections;
 //    prev = NULL;
@@ -287,15 +287,15 @@ int plc_remove_connection_unsafe(ab_plc_p session, ab_connection_p connection)
     return rc;
 }
 
-int plc_remove_connection(ab_plc_p session, ab_connection_p connection)
+int plc_remove_connection(ab_plc_p plc, ab_connection_p connection)
 {
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_DETAIL, "Starting");
 
-    if(session) {
-        critical_block(session->mutex) {
-            rc = plc_remove_connection_unsafe(session, connection);
+    if(plc) {
+        critical_block(plc->mutex) {
+            rc = plc_remove_connection_unsafe(plc, connection);
         }
     } else {
         rc = PLCTAG_ERR_NULL_PTR;
@@ -307,49 +307,49 @@ int plc_remove_connection(ab_plc_p session, ab_connection_p connection)
 }
 
 
-uint32_t plc_get_new_connection_id_unsafe(ab_plc_p session)
+uint32_t plc_get_new_connection_id_unsafe(ab_plc_p plc)
 {
-    ++(session->conn_serial_number);
+    ++(plc->conn_serial_number);
     
-    return session->conn_serial_number;
+    return plc->conn_serial_number;
 }
 
 
-uint32_t plc_get_new_connection_id(ab_plc_p session)
+uint32_t plc_get_new_connection_id(ab_plc_p plc)
 {
     uint32_t result = 0;
     
-    critical_block(session->mutex) {
-        result = plc_get_new_connection_id_unsafe(session);
+    critical_block(plc->mutex) {
+        result = plc_get_new_connection_id_unsafe(plc);
     }
     
     return result;
 }
 
 
-int plc_status(ab_plc_p session)
+int plc_status(ab_plc_p plc)
 {
     int result = PLCTAG_STATUS_OK;
     
-    if(!session) {
+    if(!plc) {
         return PLCTAG_ERR_NULL_PTR;
     }
     
-    critical_block(session->mutex) {
-        result = session->status;
+    critical_block(plc->mutex) {
+        result = plc->status;
     }
     
     return result;
 }
 
 
-int plc_find_or_create(ab_plc_p *tag_session, attr attribs)
+int plc_find_or_create(ab_plc_p *tag_plc, attr attribs)
 {
     /*int debug = attr_get_int(attribs,"debug",0);*/
-    const char* session_gw = attr_get_str(attribs, "gateway", "");
-    int session_gw_port = attr_get_int(attribs, "gateway_port", AB_EIP_DEFAULT_PORT);
-    ab_plc_p session = AB_SESSION_NULL;
-    //int new_session = 0;
+    const char* plc_gw = attr_get_str(attribs, "gateway", "");
+    int plc_gw_port = attr_get_int(attribs, "gateway_port", AB_EIP_DEFAULT_PORT);
+    ab_plc_p plc = AB_PLC_NULL;
+    //int new_plc = 0;
     int shared_session = attr_get_int(attribs, "share_session", 1); /* share the session by default. */
     int rc = PLCTAG_STATUS_OK;
 
@@ -359,47 +359,47 @@ int plc_find_or_create(ab_plc_p *tag_session, attr attribs)
         /* if we are to share sessions, then look for an existing one. */
         if (shared_session) {
             /* this returns a strong reference */
-            session = (ab_plc_p)liveobj_find(find_plc_by_host_unsafe, (void *)session_gw);
+            plc = (ab_plc_p)liveobj_find(find_plc_by_host_unsafe, (void *)plc_gw);
         } else {
             /* no sharing, create a new one */
-            session = AB_SESSION_NULL;
+            plc = AB_PLC_NULL;
         }
 
-        if (session == AB_SESSION_NULL) {
-            pdebug(DEBUG_DETAIL,"Creating new session.");
-            session = plc_create_unsafe(session_gw, session_gw_port);
+        if (plc == AB_PLC_NULL) {
+            pdebug(DEBUG_DETAIL,"Creating new PLC.");
+            plc = plc_create_unsafe(plc_gw, plc_gw_port);
 
-            if (session == AB_SESSION_NULL) {
-                pdebug(DEBUG_WARN, "unable to create or find a session!");
+            if (plc == AB_PLC_NULL) {
+                pdebug(DEBUG_WARN, "unable to create or find a PLC object!");
                 rc = PLCTAG_ERR_BAD_GATEWAY;
             } 
         } else {
-            pdebug(DEBUG_DETAIL,"Reusing existing session.");
+            pdebug(DEBUG_DETAIL,"Reusing existing PLC object.");
         }
     }
 
     /* store it into the tag */
-    *tag_session = session;
+    *tag_plc = plc;
 
     pdebug(DEBUG_DETAIL, "Done");
 
     return rc;
 }
 
-int add_plc_unsafe(ab_plc_p session)
+int add_plc_unsafe(ab_plc_p plc)
 {
     pdebug(DEBUG_DETAIL, "Starting");
 
-    session->liveobj_id = liveobj_add((liveobj_p)session, LIVEOBJ_TYPE_AB_PLC, (liveobj_func)plc_handler);
+    plc->id = liveobj_add((liveobj_p)plc, LIVEOBJ_TYPE_AB_PLC, (liveobj_func)plc_handler);
     
-    if(session->liveobj_id < 0) {
+    if(plc->id < 0) {
         /* error! */
-        pdebug(DEBUG_WARN,"Unable to add session to live objects!");
+        pdebug(DEBUG_WARN,"Unable to add PLC to live objects!");
     }
 
     pdebug(DEBUG_DETAIL, "Done");
 
-    return session->liveobj_id;
+    return plc->id;
 }
 
 int add_plc(ab_plc_p s)
@@ -418,17 +418,17 @@ int add_plc(ab_plc_p s)
 }
 
 
-static int plc_match_valid(const char *host, ab_plc_p session)
+static int plc_match_valid(const char *host, ab_plc_p plc)
 {
-    if(!session) {
+    if(!plc) {
         return 0;
     }
 
-    if(session->status !=  PLCTAG_STATUS_OK && session->status != PLCTAG_STATUS_PENDING) {
+    if(plc->status !=  PLCTAG_STATUS_OK && plc->status != PLCTAG_STATUS_PENDING) {
         return 0;
     }
 
-    if(str_cmp_i(host,session->host)) {
+    if(str_cmp_i(host,plc->host)) {
         return 0;
     }
 
@@ -438,16 +438,16 @@ static int plc_match_valid(const char *host, ab_plc_p session)
 
 int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg)
 {
-    ab_plc_p session;
+    ab_plc_p plc;
     
     pdebug(DEBUG_SPEW,"Starting.");
 
-    if(type == LIVEOBJ_TYPE_AB_SESSION) {
-        session = (ab_plc_p)obj;
+    if(type == LIVEOBJ_TYPE_AB_PLC) {
+        plc = (ab_plc_p)obj;
         
-        if(plc_match_valid((const char*)host_arg, session)) {
+        if(plc_match_valid((const char*)host_arg, plc)) {
             /* this is the right one! */
-            pdebug(DEBUG_INFO,"Found session!");
+            pdebug(DEBUG_INFO,"Found PLC!");
             
             return PLCTAG_STATUS_OK;
         }
@@ -462,7 +462,7 @@ int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg)
 
 ab_plc_p plc_create_unsafe(const char* host, int gw_port)
 {
-    ab_plc_p session = AB_SESSION_NULL;
+    ab_plc_p plc = AB_PLC_NULL;
     static volatile uint32_t srand_setup = 0;
     static volatile uint32_t connection_id = 0;
     int rc = PLCTAG_STATUS_OK;
@@ -471,19 +471,19 @@ ab_plc_p plc_create_unsafe(const char* host, int gw_port)
 
     pdebug(DEBUG_DETAIL, "Warning: not using passed port %d", gw_port);
 
-    session = rc_alloc(sizeof(struct ab_plc_t), plc_destroy);
+    plc = rc_alloc(sizeof(struct ab_plc_t), plc_destroy);
 
-    if (!session) {
-        pdebug(DEBUG_WARN, "Error allocating new session.");
-        return AB_SESSION_NULL;
+    if (!plc) {
+        pdebug(DEBUG_WARN, "Error allocating new PLC.");
+        return AB_PLC_NULL;
     }
     
     /* set the function to handle this object */
-    //session->plc_obj_func = (liveobj_func)plc_handler;
+    //plc->plc_obj_func = (liveobj_func)plc_handler;
 
-    str_copy(session->host, MAX_SESSION_HOST, host);
+    str_copy(plc->host, MAX_SESSION_HOST, host);
 
-    session->status = PLCTAG_STATUS_PENDING;
+    plc->status = PLCTAG_STATUS_PENDING;
 
     /* check for ID set up */
     if(srand_setup == 0) {
@@ -495,7 +495,7 @@ ab_plc_p plc_create_unsafe(const char* host, int gw_port)
         connection_id = rand();
     }
 
-    session->session_seq_id =  rand();
+    plc->session_seq_id =  rand();
 
     /*
      * Why is connection_id global?  Because it looks like the PLC might
@@ -507,28 +507,28 @@ ab_plc_p plc_create_unsafe(const char* host, int gw_port)
      * FIXME - this could collide.  The probability is low, but it could happen
      * as there are only 32 bits.
      */
-    session->conn_serial_number = ++connection_id;
+    plc->conn_serial_number = ++connection_id;
 
     /* set up packet round trip information */
     for(int index=0; index < SESSION_NUM_ROUND_TRIP_SAMPLES; index++) {
-        session->round_trip_samples[index] = SESSION_DEFAULT_RESEND_INTERVAL_MS;
+        plc->round_trip_samples[index] = SESSION_DEFAULT_RESEND_INTERVAL_MS;
     }
-    session->retry_interval = SESSION_DEFAULT_RESEND_INTERVAL_MS;
+    plc->retry_interval = SESSION_DEFAULT_RESEND_INTERVAL_MS;
 
-    /* add the new session to the list. */
-    add_plc_unsafe(session);
+    /* add the new PLC to the list. */
+    add_plc_unsafe(plc);
     
     
     /* make sure we have a mutex */
-    rc = mutex_create(&session->mutex);
+    rc = mutex_create(&plc->mutex);
     if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN,"Unable to create session mutex! rc= %d", rc);
-        session->status = rc;
+        pdebug(DEBUG_WARN,"Unable to create PLC mutex! rc= %d", rc);
+        plc->status = rc;
     }
 
     pdebug(DEBUG_INFO, "Done");
 
-    return session;
+    return plc;
 }
 
 
@@ -540,24 +540,24 @@ ab_plc_p plc_create_unsafe(const char* host, int gw_port)
  */
 THREAD_FUNC(plc_init)
 {
-    ab_plc_p session = (ab_plc_p)arg;
+    ab_plc_p plc = (ab_plc_p)arg;
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO, "Starting.");
 
     /* we must connect to the gateway and register */
-    if ((rc = plc_connect(session)) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "session connect failed!");
-        session->status = rc;
+    if ((rc = plc_connect(plc)) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN, "PLC connect failed!");
+        plc->status = rc;
     }
 
-    if (rc == PLCTAG_STATUS_OK && (rc = session_register(session)) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "session registration failed!");
-        session->status = rc;
+    if (rc == PLCTAG_STATUS_OK && (rc = session_register(plc)) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN, "Session registration failed!");
+        plc->status = rc;
     }
     
     /* record how we did. */
-    session->status = rc;    
+    plc->status = rc;    
     
     pdebug(DEBUG_INFO, "Done.");
 
@@ -572,30 +572,30 @@ THREAD_FUNC(plc_init)
  * Connect to the host/port passed via TCP.
  */
 
-int plc_connect(ab_plc_p session)
+int plc_connect(ab_plc_p plc)
 {
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO, "Starting.");
 
     /* Open a socket for communication with the gateway. */
-    rc = socket_create(&(session->sock));
+    rc = socket_create(&(plc->sock));
 
     if (rc) {
-        pdebug(DEBUG_WARN, "Unable to create socket for session!");
+        pdebug(DEBUG_WARN, "Unable to create socket for PLC!");
         return 0;
     }
 
     /* FIXME - this can hang! */
-    rc = socket_connect_tcp(session->sock, session->host, AB_EIP_DEFAULT_PORT);
+    rc = socket_connect_tcp(plc->sock, plc->host, AB_EIP_DEFAULT_PORT);
 
     if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "Unable to connect socket for session!");
+        pdebug(DEBUG_WARN, "Unable to connect socket for PLC!");
         return rc;
     }
 
     /* everything is OK.  We have a TCP stream open to a gateway. */
-    session->is_connected = 1;
+    plc->is_connected = 1;
 
     pdebug(DEBUG_INFO, "Done.");
 
@@ -606,39 +606,39 @@ int plc_connect(ab_plc_p session)
 /* ref counted destructor */
 void plc_destroy(rc_ptr plc_arg)
 {
-    ab_plc_p session = plc_arg;
+    ab_plc_p plc = plc_arg;
     ab_request_p req = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 
-    if (!session) {
-        pdebug(DEBUG_WARN, "Session ptr is null!");
+    if (!plc) {
+        pdebug(DEBUG_WARN, "PLC ptr is null!");
 
         return;
     }
     
-    /* remove the session from the list of live objects. */
-    liveobj_remove(session->liveobj.id);
+    /* remove the PLC from the list of live objects. */
+    liveobj_remove(plc->id);
     
     /* not needed, liveobj already handles this. */
-    //remove_plc_unsafe(session);
+    //remove_plc_unsafe(plc);
     /* check to see if there is a thread. */
-    if(session->setup_thread) {
-        thread_join(session->setup_thread);
-        thread_destroy(&session->setup_thread);
+    if(plc->setup_thread) {
+        thread_join(plc->setup_thread);
+        thread_destroy(&plc->setup_thread);
     }
     
-    mutex_destroy(&session->mutex);
+    mutex_destroy(&plc->mutex);
 
     /* unregister and close the socket. */
-    session_unregister_unsafe(session);
+    session_unregister_unsafe(plc);
 
     /* remove any remaining requests, they are dead */
-    req = session->requests;
+    req = plc->requests;
 
     while(req) {
-        plc_remove_request_unsafe(session, req);
-        req = session->requests;
+        plc_remove_request_unsafe(plc, req);
+        req = plc->requests;
     }
 
     pdebug(DEBUG_INFO, "Done.");
@@ -647,7 +647,7 @@ void plc_destroy(rc_ptr plc_arg)
 }
 
 
-int session_register(ab_plc_p session)
+int session_register(ab_plc_p plc)
 {
     eip_session_reg_req* req;
     eip_encap_t* resp;
@@ -658,19 +658,19 @@ int session_register(ab_plc_p session)
     pdebug(DEBUG_INFO, "Starting.");
 
     /*
-     * clear the session data.
+     * clear the PLC data buffer.
      *
      * We use the receiving buffer because we do not have a request and nothing can
      * be coming in (we hope) on the socket yet.
      */
-    mem_set(session->recv_data, 0, sizeof(eip_session_reg_req));
+    mem_set(plc->recv_data, 0, sizeof(eip_session_reg_req));
 
-    req = (eip_session_reg_req*)(session->recv_data);
+    req = (eip_session_reg_req*)(plc->recv_data);
 
     /* fill in the fields of the request */
     req->encap_command = h2le16(AB_EIP_REGISTER_SESSION);
     req->encap_length = h2le16(sizeof(eip_session_reg_req) - sizeof(eip_encap_t));
-    req->encap_session_handle = session->session_handle;
+    req->encap_session_handle = plc->session_handle;
     req->encap_status = h2le32(0);
     req->encap_sender_context = (uint64_t)0;
     req->encap_options = h2le32(0);
@@ -687,51 +687,51 @@ int session_register(ab_plc_p session)
 
     /* send registration to the gateway */
     data_size = sizeof(eip_session_reg_req);
-    session->recv_offset = 0;
+    plc->recv_offset = 0;
     timeout_time = time_ms() + SESSION_REGISTRATION_TIMEOUT;
 
     pdebug(DEBUG_INFO, "sending data:");
-    pdebug_dump_bytes(DEBUG_INFO, session->recv_data, data_size);
+    pdebug_dump_bytes(DEBUG_INFO, plc->recv_data, data_size);
 
-    while (timeout_time > time_ms() && session->recv_offset < data_size) {
-        rc = socket_write(session->sock, session->recv_data + session->recv_offset, data_size - session->recv_offset);
+    while (timeout_time > time_ms() && plc->recv_offset < data_size) {
+        rc = socket_write(plc->sock, plc->recv_data + plc->recv_offset, data_size - plc->recv_offset);
 
         if (rc < 0) {
             pdebug(DEBUG_WARN, "Unable to send session registration packet! rc=%d", rc);
-            session->recv_offset = 0;
+            plc->recv_offset = 0;
             return rc;
         }
 
-        session->recv_offset += rc;
+        plc->recv_offset += rc;
 
         /* don't hog the CPU */
-        if (session->recv_offset < data_size) {
+        if (plc->recv_offset < data_size) {
             sleep_ms(1);
         }
     }
 
-    if (session->recv_offset != data_size) {
-        session->recv_offset = 0;
+    if (plc->recv_offset != data_size) {
+        plc->recv_offset = 0;
         return PLCTAG_ERR_TIMEOUT;
     }
 
     /* get the response from the gateway */
 
     /* ready the input buffer */
-    session->recv_offset = 0;
-    mem_set(session->recv_data, 0, MAX_REQ_RESP_SIZE);
+    plc->recv_offset = 0;
+    mem_set(plc->recv_data, 0, MAX_REQ_RESP_SIZE);
 
     timeout_time = time_ms() + SESSION_REGISTRATION_TIMEOUT;
 
     while (timeout_time > time_ms()) {
-        if (session->recv_offset < sizeof(eip_encap_t)) {
+        if (plc->recv_offset < sizeof(eip_encap_t)) {
             data_size = sizeof(eip_encap_t);
         } else {
-            data_size = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(session->recv_data))->encap_length);
+            data_size = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(plc->recv_data))->encap_length);
         }
 
-        if (session->recv_offset < data_size) {
-            rc = socket_read(session->sock, session->recv_data + session->recv_offset, data_size - session->recv_offset);
+        if (plc->recv_offset < data_size) {
+            rc = socket_read(plc->sock, plc->recv_data + plc->recv_offset, data_size - plc->recv_offset);
 
             if (rc < 0) {
                 if (rc != PLCTAG_ERR_NO_DATA) {
@@ -740,17 +740,17 @@ int session_register(ab_plc_p session)
                     return rc;
                 }
             } else {
-                session->recv_offset += rc;
+                plc->recv_offset += rc;
 
                 /* recalculate the amount of data needed if we have just completed the read of an encap header */
-                if (session->recv_offset >= sizeof(eip_encap_t)) {
-                    data_size = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(session->recv_data))->encap_length);
+                if (plc->recv_offset >= sizeof(eip_encap_t)) {
+                    data_size = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(plc->recv_data))->encap_length);
                 }
             }
         }
 
         /* did we get all the data? */
-        if (session->recv_offset == data_size) {
+        if (plc->recv_offset == data_size) {
             break;
         } else {
             /* do not hog the CPU */
@@ -758,19 +758,19 @@ int session_register(ab_plc_p session)
         }
     }
 
-    if (session->recv_offset != data_size) {
-        session->recv_offset = 0;
+    if (plc->recv_offset != data_size) {
+        plc->recv_offset = 0;
         return PLCTAG_ERR_TIMEOUT;
     }
 
     /* set the offset back to zero for the next packet */
-    session->recv_offset = 0;
+    plc->recv_offset = 0;
 
     pdebug(DEBUG_INFO, "received response:");
-    pdebug_dump_bytes(DEBUG_INFO, session->recv_data, data_size);
+    pdebug_dump_bytes(DEBUG_INFO, plc->recv_data, data_size);
 
     /* encap header is at the start of the buffer */
-    resp = (eip_encap_t*)(session->recv_data);
+    resp = (eip_encap_t*)(plc->recv_data);
 
     /* check the response status */
     if (le2h16(resp->encap_command) != AB_EIP_REGISTER_SESSION) {
@@ -787,22 +787,22 @@ int session_register(ab_plc_p session)
      * after all that, save the session handle, we will
      * use it in future packets.
      */
-    session->session_handle = resp->encap_session_handle; /* opaque to us */
-    session->registered = 1;
+    plc->session_handle = resp->encap_session_handle; /* opaque to us */
+    plc->registered = 1;
 
     pdebug(DEBUG_INFO, "Done.");
 
     return PLCTAG_STATUS_OK;
 }
 
-int session_unregister_unsafe(ab_plc_p session)
+int session_unregister_unsafe(ab_plc_p plc)
 {
-    if (session->sock) {
-        session->is_connected = 0;
-        session->registered = 0;
-        socket_close(session->sock);
-        socket_destroy(&(session->sock));
-        session->sock = NULL;
+    if (plc->sock) {
+        plc->is_connected = 0;
+        plc->registered = 0;
+        socket_close(plc->sock);
+        socket_destroy(&(plc->sock));
+        plc->sock = NULL;
     }
 
     return PLCTAG_STATUS_OK;
@@ -815,7 +815,7 @@ int session_unregister_unsafe(ab_plc_p session)
  *
  * You must hold the mutex before calling this!
  */
-int plc_add_request_unsafe(ab_plc_p sess, ab_request_p req)
+int plc_add_request_unsafe(ab_plc_p plc, ab_request_p req)
 {
     int rc = PLCTAG_STATUS_OK;
     ab_request_p cur, prev;
@@ -823,16 +823,16 @@ int plc_add_request_unsafe(ab_plc_p sess, ab_request_p req)
 
     pdebug(DEBUG_INFO, "Starting.");
 
-    if(!sess) {
+    if(!plc) {
         pdebug(DEBUG_WARN, "Session is null!");
         return PLCTAG_ERR_NULL_PTR;
     }
 
     /* make sure the request points to the session */
-    req->session = sess;
+    req->plc = plc;
 
     /* we add the request to the end of the list. */
-    cur = sess->requests;
+    cur = plc->requests;
     prev = NULL;
 
     while (cur) {
@@ -842,7 +842,7 @@ int plc_add_request_unsafe(ab_plc_p sess, ab_request_p req)
     }
 
     if (!prev) {
-        sess->requests = req;
+        plc->requests = req;
     } else {
         prev->next = req;
     }
@@ -912,7 +912,7 @@ int plc_remove_request_unsafe(ab_plc_p sess, ab_request_p req)
     } /* else not found */
 
     req->next = NULL;
-    req->session = NULL;
+    req->plc = NULL;
 
     /* release the request refcount */
     rc_dec(req);
@@ -933,7 +933,7 @@ int plc_remove_request(ab_plc_p sess, ab_request_p req)
 {
     int rc = PLCTAG_STATUS_OK;
 
-    pdebug(DEBUG_DETAIL, "Starting.  session=%p, req=%p", sess, req);
+    pdebug(DEBUG_DETAIL, "Starting.  PLC=%p, req=%p", sess, req);
 
     if(sess == NULL || req == NULL) {
         return rc;
@@ -949,7 +949,7 @@ int plc_remove_request(ab_plc_p sess, ab_request_p req)
 }
 
 
-/* this must be called with the session mutex held */
+/* this must be called with the PLC mutex held */
 int send_eip_request_unsafe(ab_request_p req)
 {
     int rc;
@@ -969,15 +969,15 @@ int send_eip_request_unsafe(ab_request_p req)
         /* set up the session sequence ID for this transaction */
         if(encap->encap_command == h2le16(AB_EIP_READ_RR_DATA)) {
             /* get new ID */
-            req->session->session_seq_id++;
+            req->plc->session_seq_id++;
 
-            req->session_seq_id = req->session->session_seq_id;
-            encap->encap_sender_context = req->session->session_seq_id; /* link up the request seq ID and the packet seq ID */
+            req->session_seq_id = req->plc->session_seq_id;
+            encap->encap_sender_context = req->plc->session_seq_id; /* link up the request seq ID and the packet seq ID */
 
             /* mark the session as being used if this is a serialized packet */
             //~ mark_session_for_request(req);
 
-            pdebug(DEBUG_INFO,"Sending unconnected packet with session sequence ID %llx",req->session->session_seq_id);
+            pdebug(DEBUG_INFO,"Sending unconnected packet with session sequence ID %llx",req->plc->session_seq_id);
         } else {
             eip_cip_co_req *conn_req = (eip_cip_co_req*)(req->data);
 
@@ -1001,7 +1001,7 @@ int send_eip_request_unsafe(ab_request_p req)
 
         /* fill in the header fields. */
         encap->encap_length = h2le16(payload_size);
-        encap->encap_session_handle = req->session->session_handle;
+        encap->encap_session_handle = req->plc->session_handle;
         encap->encap_status = h2le32(0);
         encap->encap_options = h2le32(0);
 
@@ -1013,7 +1013,7 @@ int send_eip_request_unsafe(ab_request_p req)
     }
 
     /* send the packet */
-    rc = socket_write(req->session->sock, req->data + req->current_offset, req->request_size - req->current_offset);
+    rc = socket_write(req->plc->sock, req->data + req->current_offset, req->request_size - req->current_offset);
 
     if (rc >= 0) {
         req->current_offset += rc;
@@ -1052,17 +1052,17 @@ int send_eip_request_unsafe(ab_request_p req)
 /*
  * recv_eip_response
  *
- * Look at the passed session and read any data we can
+ * Look at the passed PLC and read any data we can
  * to fill in a packet.  If we already have a full packet,
  * punt.
  */
-int recv_eip_response_unsafe(ab_plc_p session)
+int recv_eip_response_unsafe(ab_plc_p plc)
 {
     uint32_t data_needed = 0;
     int rc = PLCTAG_STATUS_OK;
 
-    /* skip the rest if we already have a packet waiting in the session buffer. */
-    if(session->has_response) {
+    /* skip the rest if we already have a packet waiting in the PLC buffer. */
+    if(plc->has_response) {
         return PLCTAG_STATUS_OK;
     }
 
@@ -1073,15 +1073,15 @@ int recv_eip_response_unsafe(ab_plc_p session)
      * need to get an encap header.  This will determine
      * whether we need to get more data or not.
      */
-    data_needed = (session->recv_offset < sizeof(eip_encap_t)) ?
+    data_needed = (plc->recv_offset < sizeof(eip_encap_t)) ?
                                             sizeof(eip_encap_t) :
-                                            sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(session->recv_data))->encap_length);
+                                            sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(plc->recv_data))->encap_length);
 
-    if (session->recv_offset < data_needed) {
+    if (plc->recv_offset < data_needed) {
         /* read everything we can */
         do {
-            rc = socket_read(session->sock, session->recv_data + session->recv_offset,
-                             data_needed - session->recv_offset);
+            rc = socket_read(plc->sock, plc->recv_data + plc->recv_offset,
+                             data_needed - plc->recv_offset);
 
             /*pdebug(DEBUG_DETAIL,"socket_read rc=%d",rc);*/
 
@@ -1092,32 +1092,32 @@ int recv_eip_response_unsafe(ab_plc_p session)
                     return rc;
                 }
             } else {
-                session->recv_offset += rc;
+                plc->recv_offset += rc;
 
                 /*pdebug_dump_bytes(session->debug, session->recv_data, session->recv_offset);*/
 
                 /* recalculate the amount of data needed if we have just completed the read of an encap header */
-                if (session->recv_offset >= sizeof(eip_encap_t)) {
-                    data_needed = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(session->recv_data))->encap_length);
+                if (plc->recv_offset >= sizeof(eip_encap_t)) {
+                    data_needed = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(plc->recv_data))->encap_length);
                 }
             }
-        } while (rc > 0 && session->recv_offset < data_needed);
+        } while (rc > 0 && plc->recv_offset < data_needed);
     }
 
     /* did we get all the data? */
-    if (session->recv_offset >= data_needed) {
-        session->resp_seq_id = ((eip_encap_t*)(session->recv_data))->encap_sender_context;
-        session->has_response = 1;
+    if (plc->recv_offset >= data_needed) {
+        plc->resp_seq_id = ((eip_encap_t*)(plc->recv_data))->encap_sender_context;
+        plc->has_response = 1;
 
         rc = PLCTAG_STATUS_OK;
 
         pdebug(DEBUG_DETAIL, "request received all needed data.");
 
-        if(((eip_encap_t*)(session->recv_data))->encap_command == h2le16(AB_EIP_READ_RR_DATA)) {
-            eip_encap_t *encap = (eip_encap_t*)(session->recv_data);
+        if(((eip_encap_t*)(plc->recv_data))->encap_command == h2le16(AB_EIP_READ_RR_DATA)) {
+            eip_encap_t *encap = (eip_encap_t*)(plc->recv_data);
             pdebug(DEBUG_INFO,"Received unconnected packet with session sequence ID %llx",encap->encap_sender_context);
         } else {
-            eip_cip_co_resp *resp = (eip_cip_co_resp*)(session->recv_data);
+            eip_cip_co_resp *resp = (eip_cip_co_resp*)(plc->recv_data);
             pdebug(DEBUG_INFO,"Received connected packet with connection ID %x and sequence ID %u(%x)",le2h32(resp->cpf_orig_conn_id), le2h16(resp->cpf_conn_seq_num), le2h16(resp->cpf_conn_seq_num));
         }
     }
@@ -1128,7 +1128,7 @@ int recv_eip_response_unsafe(ab_plc_p session)
 
 
 /*******************************************************************************
- ************************** Session Library Functions ************************
+ ************************** PLC Library Functions ******************************
  ******************************************************************************/
  
  
@@ -1142,7 +1142,7 @@ int plc_setup()
     rc = mutex_create((mutex_p*)&global_plc_mut);
 
     if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to create session mutex!");
+        pdebug(DEBUG_ERROR, "Unable to create PLC mutex!");
         return rc;
     }
 
@@ -1168,7 +1168,7 @@ void plc_teardown()
 //    thread_join(io_handler_thread);
 //    thread_destroy((thread_p*)&io_handler_thread);
 
-    pdebug(DEBUG_INFO,"Freeing global session mutex.");
+    pdebug(DEBUG_INFO,"Freeing global PLC mutex.");
     /* clean up the mutex */
     mutex_destroy((mutex_p*)&global_plc_mut);
 
@@ -1179,7 +1179,7 @@ void plc_teardown()
 
 
 /*******************************************************************************
- ************************** Session Helper Functions ************************
+ **************************** PLC Helper Functions *****************************
  ******************************************************************************/
 
  
@@ -1237,31 +1237,31 @@ static int match_request_and_response(ab_request_p request, eip_cip_co_resp *res
 
 
 
-static void update_resend_samples(ab_plc_p session, int64_t round_trip_time)
+static void update_resend_samples(ab_plc_p plc, int64_t round_trip_time)
 {
     int index;
     int64_t round_trip_sum = 0;
     int64_t round_trip_avg = 0;
 
     /* store the round trip information */
-    session->round_trip_sample_index = ((++ session->round_trip_sample_index) >= SESSION_NUM_ROUND_TRIP_SAMPLES ? 0 : session->round_trip_sample_index);
-    session->round_trip_samples[session->round_trip_sample_index] = round_trip_time;
+    plc->round_trip_sample_index = ((++ plc->round_trip_sample_index) >= SESSION_NUM_ROUND_TRIP_SAMPLES ? 0 : plc->round_trip_sample_index);
+    plc->round_trip_samples[plc->round_trip_sample_index] = round_trip_time;
 
     /* calculate the retry interval */
     for(index=0; index < SESSION_NUM_ROUND_TRIP_SAMPLES; index++) {
-        round_trip_sum += session->round_trip_samples[index];
+        round_trip_sum += plc->round_trip_samples[index];
     }
 
     /* round up and double */
     round_trip_avg = (round_trip_sum + (SESSION_NUM_ROUND_TRIP_SAMPLES/2))/SESSION_NUM_ROUND_TRIP_SAMPLES;
-    session->retry_interval = 3 * (round_trip_avg < SESSION_MIN_RESEND_INTERVAL ? SESSION_MIN_RESEND_INTERVAL : round_trip_avg);
+    plc->retry_interval = 3 * (round_trip_avg < SESSION_MIN_RESEND_INTERVAL ? SESSION_MIN_RESEND_INTERVAL : round_trip_avg);
 
-    pdebug(DEBUG_INFO,"Packet round trip time %lld, running average round trip time is %lld",round_trip_time, session->retry_interval);
+    pdebug(DEBUG_INFO,"Packet round trip time %lld, running average round trip time is %lld",round_trip_time, plc->retry_interval);
 }
 
 
 
-static void receive_response_unsafe(ab_plc_p session, ab_request_p request)
+static void receive_response_unsafe(ab_plc_p plc, ab_request_p request)
 {
     /*
      * We received a packet.  Modify the packet interval downword slightly
@@ -1269,40 +1269,40 @@ static void receive_response_unsafe(ab_plc_p session, ab_request_p request)
      * a packet once in a while.
      */
 
-    /*session->next_packet_interval_us -= SESSION_PACKET_RECEIVE_INTERVAL_DEC;
-    if(session->next_packet_interval_us < SESSION_MIN_PACKET_INTERVAL) {
-        session->next_packet_interval_us = SESSION_MIN_PACKET_INTERVAL;
+    /*plc->next_packet_interval_us -= SESSION_PACKET_RECEIVE_INTERVAL_DEC;
+    if(plc->next_packet_interval_us < SESSION_MIN_PACKET_INTERVAL) {
+        plc->next_packet_interval_us = SESSION_MIN_PACKET_INTERVAL;
     }
-    pdebug(DEBUG_INFO,"Packet received, so decreasing packet interval to %lldus", session->next_packet_interval_us);
+    pdebug(DEBUG_INFO,"Packet received, so decreasing packet interval to %lldus", plc->next_packet_interval_us);
     */
 
     pdebug(DEBUG_INFO,"Packet sent initially %dms ago and was sent %d times",(int)(time_ms() - request->time_sent), request->send_count);
 
-    update_resend_samples(session, time_ms() - request->time_sent);
+    update_resend_samples(plc, time_ms() - request->time_sent);
 
     /* set the packet ready for processing. */
-    pdebug(DEBUG_INFO, "got full packet of size %d", session->recv_offset);
-    pdebug_dump_bytes(DEBUG_INFO, session->recv_data, session->recv_offset);
+    pdebug(DEBUG_INFO, "got full packet of size %d", plc->recv_offset);
+    pdebug_dump_bytes(DEBUG_INFO, plc->recv_data, plc->recv_offset);
 
-    /* copy the data from the session's buffer */
-    mem_copy(request->data, session->recv_data, session->recv_offset);
-    request->request_size = session->recv_offset;
+    /* copy the data from the PLC's buffer */
+    mem_copy(request->data, plc->recv_data, plc->recv_offset);
+    request->request_size = plc->recv_offset;
 
     request->resp_received = 1;
     request->send_in_progress = 0;
     request->send_request = 0;
     request->recv_in_progress = 0;
 
-    /* clear the request from the session as it is done. Note we hold the mutex here. */
-    plc_remove_request_unsafe(session, request);
+    /* clear the request from the PLC as it is done. Note we hold the mutex here. */
+    plc_remove_request_unsafe(plc, request);
 }
 
 
 
 
-int ok_to_resend(ab_plc_p session, ab_request_p request)
+int ok_to_resend(ab_plc_p plc, ab_request_p request)
 {
-    if(!session) {
+    if(!plc) {
         return 0;
     }
 
@@ -1348,11 +1348,11 @@ int ok_to_resend(ab_plc_p session, ab_request_p request)
 }
 
 
-int process_response_packet_unsafe(ab_plc_p session)
+int process_response_packet_unsafe(ab_plc_p plc)
 {
     int rc = PLCTAG_STATUS_OK;
-    eip_cip_co_resp *response = (eip_cip_co_resp*)(&session->recv_data[0]);
-    ab_request_p request = session->requests;
+    eip_cip_co_resp *response = (eip_cip_co_resp*)(&plc->recv_data[0]);
+    ab_request_p request = plc->requests;
 
     /* find the request for which there is a response pending. */
     while(request) {
@@ -1360,7 +1360,7 @@ int process_response_packet_unsafe(ab_plc_p session)
         ab_request_p next_req = request->next;
 
         if(match_request_and_response(request, response)) {
-            receive_response_unsafe(session, request);
+            receive_response_unsafe(plc, request);
         }
 
         request = next_req;
@@ -1370,36 +1370,36 @@ int process_response_packet_unsafe(ab_plc_p session)
 }
 
 
-int plc_check_incoming_data(ab_plc_p session)
+int plc_check_incoming_data(ab_plc_p plc)
 {
     int rc = PLCTAG_STATUS_OK;
     
     pdebug(DEBUG_SPEW,"Starting.");
     
-    /* take the mutex for the session to prevent anything from changing. */
+    /* take the mutex for the PLC to prevent anything from changing. */
     
     /* FIXME - is this needed here? */
     
-    critical_block(session->mutex) {
+    critical_block(plc->mutex) {
         /*
          * check for data.
          *
-         * Read a packet into the session's buffer and find the
+         * Read a packet into the PLC's buffer and find the
          * request it is for.  Repeat while there is data.
          */
 
         do {
-            rc = recv_eip_response_unsafe(session);
+            rc = recv_eip_response_unsafe(plc);
 
             /* did we get a packet? */
-            if(rc == PLCTAG_STATUS_OK && session->has_response) {
-                rc = process_response_packet_unsafe(session);
+            if(rc == PLCTAG_STATUS_OK && plc->has_response) {
+                rc = process_response_packet_unsafe(plc);
 
-                /* reset the session's buffer */
-                mem_set(session->recv_data, 0, MAX_REQ_RESP_SIZE);
-                session->recv_offset = 0;
-                session->resp_seq_id = 0;
-                session->has_response = 0;
+                /* reset the PLC's buffer */
+                mem_set(plc->recv_data, 0, MAX_REQ_RESP_SIZE);
+                plc->recv_offset = 0;
+                plc->resp_seq_id = 0;
+                plc->has_response = 0;
             }
         } while(rc == PLCTAG_STATUS_OK);
 
@@ -1420,15 +1420,15 @@ int plc_check_incoming_data(ab_plc_p session)
 
 
 
-static int plc_send_current_request(ab_plc_p session)
+static int plc_send_current_request(ab_plc_p plc)
 {
     int rc = PLCTAG_STATUS_OK;
 
-    if(!session->current_request) {
+    if(!plc->current_request) {
         return PLCTAG_STATUS_OK;
     }
 
-    rc = send_eip_request_unsafe(session->current_request);
+    rc = send_eip_request_unsafe(plc->current_request);
 
     if(rc != PLCTAG_STATUS_OK) {
         /*error sending packet!*/
@@ -1436,25 +1436,25 @@ static int plc_send_current_request(ab_plc_p session)
     }
 
     /* if we are done, then clean up */
-    if(!session->current_request->send_in_progress) {
+    if(!plc->current_request->send_in_progress) {
         /* release the refcount on the request, we are not referencing it anymore */
-        session->current_request = rc_dec(session->current_request);
+        plc->current_request = rc_dec(plc->current_request);
     }
 
     return rc;
 }
 
 
-static int plc_check_outgoing_data(ab_plc_p session)
+static int plc_check_outgoing_data(ab_plc_p plc)
 {
     int rc = PLCTAG_STATUS_OK;
-    ab_request_p request = session->requests;
+    ab_request_p request = plc->requests;
     int connected_requests_in_flight = 0;
     int unconnected_requests_in_flight = 0;
     
     pdebug(DEBUG_SPEW,"Starting.");
     
-    critical_block(session->mutex) {
+    critical_block(plc->mutex) {
         /* loop over the requests and process them one at a time. */
         while(request && rc == PLCTAG_STATUS_OK) {
             if(request->abort_request) {
@@ -1464,13 +1464,13 @@ static int plc_check_outgoing_data(ab_plc_p session)
                 request = request->next;
 
                 //~ rc = handle_abort_request(old_request);
-                rc = plc_remove_request_unsafe(session,old_request);
+                rc = plc_remove_request_unsafe(plc,old_request);
 
                 continue;
             }
 
             /* check resending */
-            if(ok_to_resend(session, request)) {
+            if(ok_to_resend(plc, request)) {
                 //~ handle_resend(session, request);
                 if(request->connected_request) {
                     pdebug(DEBUG_INFO,"Requeuing connected request.");
@@ -1495,13 +1495,13 @@ static int plc_check_outgoing_data(ab_plc_p session)
 
 
             /* is there a request ready to send and can we send? */
-            if(!session->current_request && request->send_request) {
+            if(!plc->current_request && request->send_request) {
                 if(request->connected_request) {
                     if(connected_requests_in_flight < SESSION_MAX_CONNECTED_REQUESTS_IN_FLIGHT) {
                         pdebug(DEBUG_INFO,"Readying connected packet to send.");
 
                         /* increment the refcount since we are storing a pointer to the request */
-                        session->current_request = rc_inc(request);
+                        plc->current_request = rc_inc(request);
 
                         connected_requests_in_flight++;
 
@@ -1512,7 +1512,7 @@ static int plc_check_outgoing_data(ab_plc_p session)
                         pdebug(DEBUG_INFO,"Readying unconnected packet to send.");
 
                         /* increment the refcount since we are storing a pointer to the request */
-                        session->current_request = rc_inc(request);
+                        plc->current_request = rc_inc(request);
 
                         unconnected_requests_in_flight++;
 
@@ -1522,7 +1522,7 @@ static int plc_check_outgoing_data(ab_plc_p session)
             }
 
             /* call this often to make sure we get the data out. */
-            rc = plc_send_current_request(session);
+            rc = plc_send_current_request(plc);
 
             /* get the next request to process */
             request = request->next;
@@ -1535,27 +1535,27 @@ static int plc_check_outgoing_data(ab_plc_p session)
 }
 
 
-void plc_handler(ab_plc_p session)
+void plc_handler(ab_plc_p plc)
 {
     int rc = PLCTAG_STATUS_OK;
 
-    pdebug(DEBUG_SPEW, "Checking for things to do with session %p", session);
+    pdebug(DEBUG_SPEW, "Checking for things to do with PLC %p", plc);
     
     /* fake exceptions */
     do {
         /* do we need to initialize the session? */
-        if(!session->registered) {
-            if(!session->setup_thread) {
+        if(!plc->registered) {
+            if(!plc->setup_thread) {
                 pdebug(DEBUG_INFO,"Starting thread to set up session.");
                 /* kick off a thread to handle the blocking parts of the session creation. */
-                session->status = PLCTAG_STATUS_PENDING;
+                plc->status = PLCTAG_STATUS_PENDING;
                 
-                rc = thread_create(&session->setup_thread,plc_init,32*1024, (void*)session);
+                rc = thread_create(&plc->setup_thread,plc_init,32*1024, (void*)plc);
                 if(rc != PLCTAG_STATUS_OK) {
-                    pdebug(DEBUG_WARN,"Unable to start background session initialization thread! rc= %d", rc);
-                    session->status = rc;
+                    pdebug(DEBUG_WARN,"Unable to start background PLC initialization thread! rc= %d", rc);
+                    plc->status = rc;
                 } else {
-                    pdebug(DEBUG_INFO, "Session not registered, kicked off registration thread.");
+                    pdebug(DEBUG_INFO, "PLC not registered, kicked off registration thread.");
                 }
                 
                 break;
@@ -1563,20 +1563,20 @@ void plc_handler(ab_plc_p session)
         } 
         
         
-        /* punt if we are still setting up the session. */
-        if(session->status == PLCTAG_STATUS_PENDING) {
+        /* punt if we are still setting up the PLC. */
+        if(plc->status == PLCTAG_STATUS_PENDING) {
             break;
         }
         
-        if(session->setup_thread) {
+        if(plc->setup_thread) {
             /* the thread is done, clean up. */
-            thread_join(session->setup_thread);
-            thread_destroy(&session->setup_thread);
+            thread_join(plc->setup_thread);
+            thread_destroy(&plc->setup_thread);
         }
         
-        /* punt if we do not have a good session. */
-        if(session->status != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_SPEW, "Bad session set up.");
+        /* punt if we do not have a good PLC. */
+        if(plc->status != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_SPEW, "Bad PLC set up.");
             
             /*
              * FIXME - should do some sort of retry here.   For instance if the Ethernet cable
@@ -1591,16 +1591,16 @@ void plc_handler(ab_plc_p session)
          * The old code did?
          */
         
-        rc = plc_check_incoming_data(session);
+        rc = plc_check_incoming_data(plc);
         if (rc != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_WARN, "Error when checking for incoming session data! %d", rc);
+            pdebug(DEBUG_WARN, "Error when checking for incoming PLC data! %d", rc);
             /* FIXME - do something useful with this error */
         }
 
         /* check for incoming data. */
-        rc = plc_check_outgoing_data(session);
+        rc = plc_check_outgoing_data(plc);
         if (rc != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_WARN, "Error when checking for outgoing session data! %d", rc);
+            pdebug(DEBUG_WARN, "Error when checking for outgoing PLC data! %d", rc);
             /* FIXME - do something useful with this error */
         }
     } while(0);

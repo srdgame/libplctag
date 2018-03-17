@@ -115,8 +115,8 @@ int tag_status(ab_tag_p tag)
      *   N1         N2      OK        N1
      *   N1         N2      N3        N1
      */
-    if (tag->session) {
-        plc_rc = plc_status(tag->session);
+    if (tag->plc) {
+        plc_rc = plc_status(tag->plc);
     } else {
         /* this is not OK.  This is fatal! */
         plc_rc = PLCTAG_ERR_CREATE;
@@ -466,14 +466,14 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
     /* mark it as ready to send */
     req->send_request = 1;
 
-    /* this request is connected, so it needs the session exclusively */
+    /* this request is connected, so it needs the PLC exclusively */
     req->connected_request = 1;
 
-    /* add the request to the session's list. */
-    rc = plc_add_request(tag->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(tag->plc, req);
 
     if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
+        pdebug(DEBUG_ERROR, "Unable to add request to PLC! rc=%d", rc);
         tag->reqs[slot] = rc_dec(req);
         return rc;
     }
@@ -595,11 +595,11 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
     /* mark the request as a connected request */
     req->connected_request = 1;
 
-    /* add the request to the session's list. */
-    rc = plc_add_request(tag->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(tag->plc, req);
 
     if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
+        pdebug(DEBUG_ERROR, "Unable to add request to PLC! rc=%d", rc);
         tag->reqs[slot] = rc_dec(req);
         return rc;
     }

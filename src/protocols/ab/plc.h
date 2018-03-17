@@ -25,8 +25,7 @@
  *                                                                        *
  **************************************************************************/
 
-#ifndef __PLCTAG_AB_SESSION_H__
-#define __PLCTAG_AB_SESSION_H__ 1
+#pragma once
 
 #include <ab/ab_common.h>
 #include <ab/request.h>
@@ -65,25 +64,25 @@
 //uint64_t plc_get_new_seq_id_unsafe(ab_plc_p sess);
 uint64_t plc_get_new_seq_id(ab_plc_p sess);
 
-extern int plc_find_or_create(ab_plc_p *session, attr attribs);
-ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p session,const char *path);
-//extern int plc_add_connection_unsafe(ab_plc_p session, ab_connection_p connection);
-extern int plc_add_connection(ab_plc_p session, ab_connection_p connection);
-extern int plc_remove_connection_unsafe(ab_plc_p session, ab_connection_p connection);
-extern int plc_remove_connection(ab_plc_p session, ab_connection_p connection);
+extern int plc_find_or_create(ab_plc_p *plc, attr attribs);
+ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path);
+//extern int plc_add_connection_unsafe(ab_plc_p plc, ab_connection_p connection);
+extern int plc_add_connection(ab_plc_p plc, ab_connection_p connection);
+extern int plc_remove_connection_unsafe(ab_plc_p plc, ab_connection_p connection);
+extern int plc_remove_connection(ab_plc_p plc, ab_connection_p connection);
 //extern int plc_add_request_unsafe(ab_plc_p sess, ab_request_p req);
 extern int plc_add_request(ab_plc_p sess, ab_request_p req);
 //extern int plc_remove_request_unsafe(ab_plc_p sess, ab_request_p req);
 extern int plc_remove_request(ab_plc_p sess, ab_request_p req);
 
-extern uint32_t plc_get_new_connection_id(ab_plc_p);
-//extern int plc_status_unsafe(ab_plc_p session);
+extern uint32_t plc_get_new_connection_id(ab_plc_p plc);
+//extern int plc_status_unsafe(ab_plc_p plc);
 
 /* send/receive packets. */
-//extern int recv_eip_response_unsafe(ab_plc_p session);
+//extern int recv_eip_response_unsafe(ab_plc_p plc);
 //extern int send_eip_request_unsafe(ab_request_p req);
 
-extern int plc_status(ab_plc_p session);
+extern int plc_status(ab_plc_p plc);
 
 
 extern int plc_setup();
@@ -95,5 +94,3 @@ extern void plc_teardown();
  */
 extern mutex_p global_plc_mut;
 
-
-#endif

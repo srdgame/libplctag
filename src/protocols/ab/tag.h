@@ -55,8 +55,8 @@ struct ab_tag_t {
     uint8_t dhp_src;
     uint8_t dhp_dest;
 
-    /* pointers back to session */
-    ab_plc_p session;
+    /* pointers back to PLC */
+    ab_plc_p plc;
     int needs_connection;
     ab_connection_p connection;
 

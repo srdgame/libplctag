@@ -84,7 +84,7 @@ int ab_init(void)
 
     pdebug(DEBUG_INFO,"Initializing AB protocol library.");
 
-    /* set up session IO thread etc. */
+    /* set up PLC IO thread etc. */
     rc = plc_setup();
 
     pdebug(DEBUG_INFO,"Finished initializing AB protocol library.");
@@ -269,17 +269,17 @@ plc_tag_p ab_tag_create(attr attribs)
     tag->num_retries = attr_get_int(attribs, "num_retries", num_retries);
 
     /*
-     * Find or create a session.
+     * Find or create a PLC.
      *
-     * All tags need sessions.  They are the TCP connection to the gateway PLC.
+     * All tags need PLCs.
      */
-    if(plc_find_or_create(&tag->session, attribs) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to create session!");
+    if(plc_find_or_create(&tag->plc, attribs) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_INFO,"Unable to create PLC object!");
         tag->status = PLCTAG_ERR_BAD_GATEWAY;
         return (plc_tag_p)tag;
     }
 
-    pdebug(DEBUG_DETAIL, "using session=%p", tag->session);
+    pdebug(DEBUG_DETAIL, "using PLC=%p", tag->plc);
 
     if(tag->needs_connection) {
         /* Find or create a connection.*/
@@ -389,7 +389,7 @@ void tag_destroy(ab_tag_p tag)
 {
 //    int rc = PLCTAG_STATUS_OK;
     ab_connection_p connection = NULL;
-    ab_plc_p session = NULL;
+    ab_plc_p plc = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 
@@ -405,7 +405,7 @@ void tag_destroy(ab_tag_p tag)
 
     /* get rid of all lingering other objects. */
     connection = tag->connection;
-    session = tag->session;
+    plc = tag->plc;
 
     /* tags may have a connection.  Release if so. */
     if(connection) {
@@ -413,13 +413,13 @@ void tag_destroy(ab_tag_p tag)
         tag->connection = rc_dec(connection);
     }
 
-    /* tags should always have a session.  Release it. */
-    pdebug(DEBUG_DETAIL,"Getting ready to release tag session %p",tag->session);
-    if(session) {
-        pdebug(DEBUG_DETAIL, "Removing tag from session.");
-        tag->session = rc_dec(session);
+    /* tags should always have a PLC.  Release it. */
+    pdebug(DEBUG_DETAIL,"Getting ready to release tag PLC %p",tag->plc);
+    if(plc) {
+        pdebug(DEBUG_DETAIL, "Removing tag from plc.");
+        tag->plc = rc_dec(plc);
     } else {
-        pdebug(DEBUG_WARN,"No session pointer!");
+        pdebug(DEBUG_WARN,"No PLC pointer!");
     }
 
     if (tag->reqs) {
