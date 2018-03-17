@@ -40,7 +40,7 @@ extern "C"
 #include <lib/libplctag.h>
 #include <lib/tag.h>
 #include <ab/connection.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/tag.h>
 #include <ab/eip.h>
 #include <ab/ab.h>
@@ -59,7 +59,7 @@ struct ab_connection_t {
 
     char path[MAX_CONN_PATH];
 
-    ab_session_p session;
+    ab_plc_p plc;
 
     uint32_t targ_connection_id; /* the ID the target uses for this connection. */
     uint32_t orig_connection_id; /* the ID we use for this connection */
@@ -133,7 +133,7 @@ uint16_t connection_next_seq(ab_connection_p connection)
  * Shared global data
  */
 
-//~ static ab_connection_p session_find_connection_by_path_unsafe(ab_session_p session,const char *path);
+//~ static ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path);
 static ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int shared);
 static int connection_perform_forward_open(ab_connection_p connection);
 static int send_forward_open_req(ab_connection_p connection, ab_request_p req);
@@ -164,18 +164,18 @@ int connection_find_or_create(ab_tag_p tag, attr attribs)
     ab_connection_p connection = AB_CONNECTION_NULL;
     int rc = PLCTAG_STATUS_OK;
     int is_new = 0;
-    int shared_connection = attr_get_int(attribs, "share_connection", 1); /* share the session by default. */
+    int shared_connection = attr_get_int(attribs, "share_connection", 1); /* share the connection by default. */
 
     pdebug(DEBUG_INFO, "Starting.");
 
-    /* lock the session while this is happening because we do not
+    /* lock the PLC while this is happening because we do not
      * want a race condition where two tags try to create the same
      * connection at the same time.
      */
 
-    critical_block(global_session_mut) {
+    critical_block(global_plc_mut) {
         if(shared_connection) {
-            connection = session_find_connection_by_path_unsafe(tag->session, path);
+            connection = plc_find_connection_by_path_unsafe(tag->plc, path);
         } else {
             connection = AB_CONNECTION_NULL;
         }
@@ -254,6 +254,8 @@ int connection_release(ab_connection_p connection)
 ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int shared)
 {
     ab_connection_p connection = rc_alloc(sizeof(struct ab_connection_t), connection_cleanup);
+    
+    (void)shared;
 
     pdebug(DEBUG_INFO, "Starting.");
 
@@ -262,9 +264,9 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
         return NULL;
     }
 
-    connection->session = rc_inc(tag->session);
+    connection->plc = rc_inc(tag->plc);
     connection->conn_seq_num = 1 /*(uint16_t)(intptr_t)(connection)*/;
-    connection->orig_connection_id = session_get_new_connection_id(connection->session);
+    connection->orig_connection_id = plc_get_new_connection_id(connection->plc);
     connection->status = PLCTAG_STATUS_PENDING;
 //    connection->exclusive = !shared;
 
@@ -280,13 +282,13 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
      * This sets up the packet size, among other things.
      */
     switch(tag->protocol_type) {
-        case AB_PROTOCOL_PLC:
-        case AB_PROTOCOL_MLGX:
+        case AB_PLC_TYPE_PLC:
+        case AB_PLC_TYPE_MLGX:
             connection->conn_params = AB_EIP_PLC5_PARAM;
             break;
 
-        case AB_PROTOCOL_LGX:
-        case AB_PROTOCOL_MLGX800:
+        case AB_PLC_TYPE_LGX:
+        case AB_PLC_TYPE_MLGX800:
             connection->conn_params = AB_EIP_LGX_PARAM;
             break;
 
@@ -302,11 +304,11 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
         pdebug(DEBUG_DETAIL,"conn_path[%d] = %x", j, connection->conn_path[j]);
     }
 
-    /* add the connection to the session */
+    /* add the connection to the PLC */
     /* FIXME - these could fail! */
     //connection->session = rc_inc(connection->session);
-    //session_add_connection_unsafe(connection->session, connection);
-    session_add_connection(connection->session, connection);
+    //plc_add_connection_unsafe(connection->session, connection);
+    plc_add_connection(connection->plc, connection);
 
     pdebug(DEBUG_INFO, "Done.");
 
@@ -440,15 +442,15 @@ int send_forward_open_req(ab_connection_p connection, ab_request_p req)
     req->send_request = 1;
 
     /*
-     * make sure the session serializes this with respect to other
+     * make sure the plc serializes this with respect to other
      * control packets.  Apparently, the connection manager has no
      * buffers.
      */
     req->connected_request = 1;
     req->no_resend = 1; /* do not resend this, leads to problems.*/
 
-    /* add the request to the session's list. */
-    rc = session_add_request(connection->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(connection->plc, req);
 
     pdebug(DEBUG_INFO, "Done");
 
@@ -525,15 +527,15 @@ void connection_cleanup(void *connection_arg)
      * a reference (and thus a ref count increment), then we have another
      * reference and thus cannot delete this connection yet.
      */
-    critical_block(global_session_mut) {
+    critical_block(global_plc_mut) {
 //        if(rc_count(connection) > 0) {
 //            pdebug(DEBUG_WARN,"Some other thread took a reference to this connection before we could delete it.  Aborting deletion.");
 //            really_destroy = 0;
 //            break;
 //        }
 
-        /* make sure the session does not reference the connection */
-        session_remove_connection_unsafe(connection->session, connection);
+        /* make sure the PLC does not reference the connection */
+        plc_remove_connection_unsafe(connection->plc, connection);
 
         /* now no one can get a reference to this connection. */
     }
@@ -541,7 +543,7 @@ void connection_cleanup(void *connection_arg)
     /* clean up connection with the PLC, ignore return code, we can't do anything about it. */
     connection_close(connection);
 
-    connection->session = rc_dec(connection->session);
+    connection->plc = rc_dec(connection->plc);
 
     /* do final clean up */
     //rc_free(connection);
@@ -669,14 +671,14 @@ int send_forward_close_req(ab_connection_p connection, ab_request_p req)
     /*req->abort_after_send = 1;*/ /* don't return to us.*/
 
     /*
-     * make sure the session serializes this with respect to other
+     * make sure the PLC serializes this with respect to other
      * control packets.  Apparently, the connection manager has no
      * buffers.
      */
     req->connected_request = 1;
 
-    /* add the request to the session's list. */
-    rc = session_add_request(connection->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(connection->plc, req);
 
     pdebug(DEBUG_INFO, "Done");
 

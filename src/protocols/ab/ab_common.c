@@ -37,8 +37,8 @@
 #include <ab/micro800.h>
 #include <ab/plc5.h>
 #include <ab/plc5_dhp.h>
-#include <ab/session.h>
-#include <ab/connection.h>
+#include <ab/plc.h>
+//#include <ab/connection.h>
 #include <ab/tag.h>
 #include <ab/request.h>
 #include <util/attr.h>
@@ -69,7 +69,7 @@ struct tag_vtable_t default_vtable = {  (tag_handler_func)NULL,
 
 
 /* forward declarations*/
-tag_vtable_p set_tag_vtable(ab_tag_p tag);
+tag_vtable_p set_tag_vtable(ab_plc_p plc);
 
 static void tag_destroy(ab_tag_p tag);
 
@@ -84,8 +84,8 @@ int ab_init(void)
 
     pdebug(DEBUG_INFO,"Initializing AB protocol library.");
 
-    /* set up session IO thread etc. */
-    rc = session_setup();
+    /* set up PLC IO thread etc. */
+    rc = plc_setup();
 
     pdebug(DEBUG_INFO,"Finished initializing AB protocol library.");
 
@@ -99,28 +99,40 @@ void ab_teardown(void)
 {
     pdebug(DEBUG_INFO,"Releasing global AB protocol resources.");
 
-    session_teardown();
+    plc_teardown();
 }
     
 
 
 plc_tag_p ab_tag_create(attr attribs)
 {
-    ab_tag_p tag = AB_TAG_NULL;
-    const char *path;
+    ab_tag_p tag = NULL;
+    ab_plc_p plc = NULL;
+//    const char *path;
     int num_retries;
     int default_retry_interval;
     int rc = PLCTAG_STATUS_OK;
-    ab_session_p session = NULL;
 
     pdebug(DEBUG_INFO,"Starting.");
     
     /* Find out if this is a supported PLC first. */
-    session = session_find_or_create(attribs);
-    if(!session) {
+    rc = plc_find_or_create(&plc, attribs);
+    if(!plc) {
         pdebug(DEBUG_WARN, "Unsupported AB PLC type!");
         return NULL;
     }
+
+    /*
+     * Find or create a PLC.
+     *
+     * All tags need PLCs.
+     */
+    if((rc = plc_find_or_create(&plc, attribs)) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_INFO,"Unable to create PLC object! rc=%d", rc);
+        return NULL;
+    }
+
+    pdebug(DEBUG_DETAIL, "using PLC=%p", plc);
 
     /*
      * allocate memory for the new tag.  Do this first so that
@@ -131,15 +143,18 @@ plc_tag_p ab_tag_create(attr attribs)
 
     if(!tag) {
         pdebug(DEBUG_ERROR,"Unable to allocate memory for AB EIP tag!");
-        rc_dec(session);
+        rc_dec(plc);
         return NULL;
     }
+    
+    /* now assign the PLC */
+    tag->plc = plc;
 
     pdebug(DEBUG_DETAIL, "tag=%p", tag);
     
     /* we were able to create the tag, now put the session into it. */
-    tag->session = session;
-    tag->plc_type = session_plc_type(session);
+    tag->plc = plc;
+    tag->plc_type = plc_get_type(plc);
     
     rc = plc_tag_init((plc_tag_p)tag, attribs);
     if(rc != PLCTAG_STATUS_OK) {
@@ -189,10 +204,10 @@ plc_tag_p ab_tag_create(attr attribs)
         return (plc_tag_p)tag;
     }
 
-//    /* get the connection path, punt if there is not one and we have a Logix-class PLC. */
+    /* get the connection path, punt if there is not one and we have a Logix-class PLC. */
 //    path = attr_get_str(attribs,"path",NULL);
 //
-//    if(path == NULL && tag->protocol_type == AB_PROTOCOL_LGX) {
+//    if(path == NULL && tag->protocol_type == AB_PLC_TYPE_LGX) {
 //        pdebug(DEBUG_WARN,"Unable to find or determine base wire protocol type!");
 //        tag->status = PLCTAG_ERR_BAD_PARAM;
 //        return (plc_tag_p)tag;
@@ -202,37 +217,37 @@ plc_tag_p ab_tag_create(attr attribs)
 
     /* set up retry and other PLC-specific information. */
 
-    switch(tag->protocol_type) {
-        case AB_PROTOCOL_PLC:
-            tag->needs_connection = 0;
-            num_retries = DEFAULT_NUM_RETRIES;
-            default_retry_interval = DEFAULT_RETRY_INTERVAL;
-            break;
-
-        case AB_PROTOCOL_MLGX:
-            tag->needs_connection = 0;
-            num_retries = DEFAULT_NUM_RETRIES;
-            default_retry_interval = DEFAULT_RETRY_INTERVAL;
-            break;
-
-        case AB_PROTOCOL_LGX:
-            tag->needs_connection = 0;
-            num_retries = DEFAULT_NUM_RETRIES;
-            default_retry_interval = DEFAULT_RETRY_INTERVAL;
-            break;
-
-        case AB_PROTOCOL_MLGX800:
-            tag->needs_connection = 1;
-            num_retries = DEFAULT_NUM_RETRIES;
-            default_retry_interval = DEFAULT_RETRY_INTERVAL;
-            break;
-
-        default:
-            pdebug(DEBUG_WARN, "Unknown PLC type!");
-            tag->status = PLCTAG_ERR_BAD_DEVICE;
-            return (plc_tag_p)tag;
-            break;
-    }
+//    switch(tag->protocol_type) {
+//        case AB_PLC_TYPE_PLC:
+//            tag->needs_connection = 0;
+//            num_retries = DEFAULT_NUM_RETRIES;
+//            default_retry_interval = DEFAULT_RETRY_INTERVAL;
+//            break;
+//
+//        case AB_PLC_TYPE_MLGX:
+//            tag->needs_connection = 0;
+//            num_retries = DEFAULT_NUM_RETRIES;
+//            default_retry_interval = DEFAULT_RETRY_INTERVAL;
+//            break;
+//
+//        case AB_PLC_TYPE_LGX:
+//            tag->needs_connection = 0;
+//            num_retries = DEFAULT_NUM_RETRIES;
+//            default_retry_interval = DEFAULT_RETRY_INTERVAL;
+//            break;
+//
+//        case AB_PLC_TYPE_MLGX800:
+//            tag->needs_connection = 1;
+//            num_retries = DEFAULT_NUM_RETRIES;
+//            default_retry_interval = DEFAULT_RETRY_INTERVAL;
+//            break;
+//
+//        default:
+//            pdebug(DEBUG_WARN, "Unknown PLC type!");
+//            tag->status = PLCTAG_ERR_BAD_DEVICE;
+//            return (plc_tag_p)tag;
+//            break;
+//    }
 
 
     /* start parsing the parts of the tag. */
@@ -246,11 +261,11 @@ plc_tag_p ab_tag_create(attr attribs)
      *
      * Skip this if we don't have a path.
      */
-    if(cip_encode_path(tag,path) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to convert path links strings to binary path!");
-        tag->status = PLCTAG_ERR_BAD_PARAM;
-        return (plc_tag_p)tag;
-    }
+//    if(cip_encode_path(tag,path) != PLCTAG_STATUS_OK) {
+//        pdebug(DEBUG_INFO,"Unable to convert path links strings to binary path!");
+//        tag->status = PLCTAG_ERR_BAD_PARAM;
+//        return (plc_tag_p)tag;
+//    }
 
     /*
      * handle the strange LGX->DH+->PLC5 case.
@@ -261,38 +276,29 @@ plc_tag_p ab_tag_create(attr attribs)
      * then we need to be in connected mode.  Even if the PLC that we want
      * to talk to is one that supports non-connected mode.
      */
-    if(tag->use_dhp_direct) {
-        /* this is a bit of a cheat.   The logic should be fixed up to combine with the check above.*/
-        tag->needs_connection = 1;
-        default_retry_interval = DEFAULT_RETRY_INTERVAL*3; /* MAGIC boost the default timeout! */
-    }
+//    if(tag->use_dhp_direct) {
+//        /* this is a bit of a cheat.   The logic should be fixed up to combine with the check above.*/
+//        tag->needs_connection = 1;
+//        default_retry_interval = DEFAULT_RETRY_INTERVAL*3; /* MAGIC boost the default timeout! */
+//    }
 
     /*
      * set up tag vtable.  This is protocol specific
      */
-    tag->vtable = set_tag_vtable(tag);
-
+    tag->vtable = set_tag_vtable(plc);
     if(!tag->vtable) {
         pdebug(DEBUG_INFO,"Unable to set tag vtable!");
         tag->status = PLCTAG_ERR_BAD_PARAM;
         return (plc_tag_p)tag;
     }
+    
+    tag->plc_type = plc_get_type(plc);
 
     tag->default_retry_interval = attr_get_int(attribs,"default_retry_interval", default_retry_interval);
     tag->num_retries = attr_get_int(attribs, "num_retries", num_retries);
-
-    /*
-     * Find or create a session.
-     *
-     * All tags need sessions.  They are the TCP connection to the gateway PLC.
-     */
-    if(session_find_or_create(tag, attribs) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to create session!");
-        tag->status = PLCTAG_ERR_BAD_GATEWAY;
-        return (plc_tag_p)tag;
-    }
-
-    pdebug(DEBUG_DETAIL, "using session=%p", tag->session);
+    
+    /* FIXME - when connections are finally gone, remove this. */
+    tag->needs_connection = 1;
 
 //    if(tag->needs_connection) {
 //        /* Find or create a connection.*/
@@ -300,10 +306,10 @@ plc_tag_p ab_tag_create(attr attribs)
 //            pdebug(DEBUG_INFO,"Unable to create connection! Status=%d",tag->status);
 //            return (plc_tag_p)tag;
 //        }
-
-        /* set up the links between the tag and the connection. */
-        //connection_add_tag(tag->connection, tag);
-    }
+//
+//        /* set up the links between the tag and the connection. */
+//        //connection_add_tag(tag->connection, tag);
+//    }
 
     /*
      * check the tag name, this is protocol specific.
@@ -331,27 +337,28 @@ plc_tag_p ab_tag_create(attr attribs)
  * just what flavor of the protocol we will be using for this
  * tag.
  */
-tag_vtable_p set_tag_vtable(ab_tag_p tag)
+tag_vtable_p set_tag_vtable(ab_plc_p plc)
 {
-    switch(tag->protocol_type) {
-        case AB_PROTOCOL_PLC:
-            if(tag->use_dhp_direct) {
-                return &plc5_dhp_vtable;
-            } else {
-                return &plc5_vtable;
-            }
+    switch(plc_get_type(plc)) {
+        case AB_PLC_TYPE_PLC:
+            return &plc5_vtable;
 
             break;
 
-        case AB_PROTOCOL_MLGX:
+        case AB_PLC_TYPE_PLC_DHP:
+            return &plc5_dhp_vtable;
+
+            break;
+
+        case AB_PLC_TYPE_MLGX:
             return &plc5_vtable;
             break;
 
-        case AB_PROTOCOL_MLGX800:
+        case AB_PLC_TYPE_MLGX800:
             return &micro800_vtable;
             break;
 
-        case AB_PROTOCOL_LGX:
+        case AB_PLC_TYPE_LGX:
             return &logix_vtable;
             break;
 
@@ -401,8 +408,8 @@ int tag_abort(ab_tag_p tag)
 void tag_destroy(ab_tag_p tag)
 {
 //    int rc = PLCTAG_STATUS_OK;
-    ab_connection_p connection = NULL;
-    ab_session_p session = NULL;
+//    ab_connection_p connection = NULL;
+    ab_plc_p plc = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 
@@ -417,22 +424,22 @@ void tag_destroy(ab_tag_p tag)
     tag_abort(tag);
 
     /* get rid of all lingering other objects. */
-    connection = tag->connection;
-    session = tag->session;
+    //connection = tag->connection;
+    plc = tag->plc;
 
     /* tags may have a connection.  Release if so. */
-    if(connection) {
-        pdebug(DEBUG_DETAIL, "Removing tag from connection.");
-        tag->connection = rc_dec(connection);
-    }
+//    if(connection) {
+//        pdebug(DEBUG_DETAIL, "Removing tag from connection.");
+//        tag->connection = rc_dec(connection);
+//    }
 
-    /* tags should always have a session.  Release it. */
-    pdebug(DEBUG_DETAIL,"Getting ready to release tag session %p",tag->session);
-    if(session) {
-        pdebug(DEBUG_DETAIL, "Removing tag from session.");
-        tag->session = rc_dec(session);
+    /* tags should always have a PLC.  Release it. */
+    pdebug(DEBUG_DETAIL,"Getting ready to release tag PLC %p",tag->plc);
+    if(plc) {
+        pdebug(DEBUG_DETAIL, "Removing tag from plc.");
+        tag->plc = rc_dec(plc);
     } else {
-        pdebug(DEBUG_WARN,"No session pointer!");
+        pdebug(DEBUG_WARN,"No PLC pointer!");
     }
 
     if (tag->reqs) {
@@ -470,28 +477,28 @@ void tag_destroy(ab_tag_p tag)
 
 
 
-int check_cpu(ab_tag_p tag, attr attribs)
+int check_cpu(/*ab_tag_p tag, */attr attribs)
 {
-    const char* cpu_type = attr_get_str(attribs, "cpu", "NONE");
+    const char* plc_type = attr_get_str(attribs, "plc", attr_get_str(attribs, "cpu", "NONE"));
 
-    if (!str_cmp_i(cpu_type, "plc") || !str_cmp_i(cpu_type, "plc5") || !str_cmp_i(cpu_type, "slc") ||
-        !str_cmp_i(cpu_type, "slc500")) {
-        tag->protocol_type = AB_PROTOCOL_PLC;
-    } else if (!str_cmp_i(cpu_type, "micrologix800") || !str_cmp_i(cpu_type, "mlgx800") || !str_cmp_i(cpu_type, "micro800")) {
-        tag->protocol_type = AB_PROTOCOL_MLGX800;
-    } else if (!str_cmp_i(cpu_type, "micrologix") || !str_cmp_i(cpu_type, "mlgx")) {
-        tag->protocol_type = AB_PROTOCOL_MLGX;
-    } else if (!str_cmp_i(cpu_type, "compactlogix") || !str_cmp_i(cpu_type, "clgx") || !str_cmp_i(cpu_type, "lgx") ||
-               !str_cmp_i(cpu_type, "controllogix") || !str_cmp_i(cpu_type, "contrologix") ||
-               !str_cmp_i(cpu_type, "flexlogix") || !str_cmp_i(cpu_type, "flgx")) {
-        tag->protocol_type = AB_PROTOCOL_LGX;
-    } else {
-        pdebug(DEBUG_WARN, "Unsupported device type: %s", cpu_type);
+    if (!str_cmp_i(plc_type, "plc") || !str_cmp_i(plc_type, "plc5") || !str_cmp_i(plc_type, "slc") ||
+        !str_cmp_i(plc_type, "slc500")) {
+        return AB_PLC_TYPE_PLC;
+    } else if (!str_cmp_i(plc_type, "plc-dhp") || !str_cmp_i(plc_type, "plc5-dhp")) {
+        return AB_PLC_TYPE_PLC_DHP;
+    } else if (!str_cmp_i(plc_type, "micrologix800") || !str_cmp_i(plc_type, "mlgx800") || !str_cmp_i(plc_type, "micro800")) {
+        return AB_PLC_TYPE_MLGX800;
+    } else if (!str_cmp_i(plc_type, "micrologix") || !str_cmp_i(plc_type, "mlgx")) {
+        return AB_PLC_TYPE_MLGX;
+    } else if (!str_cmp_i(plc_type, "compactlogix") || !str_cmp_i(plc_type, "clgx") || !str_cmp_i(plc_type, "lgx") ||
+               !str_cmp_i(plc_type, "controllogix") || !str_cmp_i(plc_type, "contrologix") ||
+               !str_cmp_i(plc_type, "flexlogix") || !str_cmp_i(plc_type, "flgx")) {
+        return AB_PLC_TYPE_LGX;
+    } 
+        
+    pdebug(DEBUG_WARN, "Unsupported device type: %s", plc_type);
 
-        return PLCTAG_ERR_BAD_DEVICE;
-    }
-
-    return PLCTAG_STATUS_OK;
+    return PLCTAG_ERR_BAD_DEVICE;
 }
 
 int check_tag_name(ab_tag_p tag, const char* name)
@@ -502,22 +509,21 @@ int check_tag_name(ab_tag_p tag, const char* name)
     }
 
     /* attempt to parse the tag name */
-    switch (tag->protocol_type) {
-        case AB_PROTOCOL_PLC:
-        case AB_PROTOCOL_MLGX:
+    switch (tag->plc_type) {
+        case AB_PLC_TYPE_PLC:
+        case AB_PLC_TYPE_PLC_DHP:
+        case AB_PLC_TYPE_MLGX:
             if (!pccc_encode_tag_name(tag->encoded_name, &(tag->encoded_name_size), name, MAX_TAG_NAME)) {
                 pdebug(DEBUG_WARN, "parse of PCCC-style tag name %s failed!", name);
-
                 return PLCTAG_ERR_BAD_PARAM;
             }
 
             break;
 
-        case AB_PROTOCOL_MLGX800:
-        case AB_PROTOCOL_LGX:
+        case AB_PLC_TYPE_MLGX800:
+        case AB_PLC_TYPE_LGX:
             if (!cip_encode_tag_name(tag, name)) {
                 pdebug(DEBUG_WARN, "parse of CIP-style tag name %s failed!", name);
-
                 return PLCTAG_ERR_BAD_PARAM;
             }
 
@@ -525,7 +531,7 @@ int check_tag_name(ab_tag_p tag, const char* name)
 
         default:
             /* how would we get here? */
-            pdebug(DEBUG_WARN, "unsupported protocol %d", tag->protocol_type);
+            pdebug(DEBUG_WARN, "unsupported protocol %d", tag->plc_type);
 
             return PLCTAG_ERR_BAD_PARAM;
 

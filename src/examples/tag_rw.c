@@ -71,7 +71,7 @@ void usage(void)
             "  -w <val>  - The value to write.  Must be formatted appropriately\n"
             "              for the data type.\n"
             "\n"
-            "Example: tag_rw -t uint32 -p 'protocol=ab_eip&gateway=10.206.1.27&path=1,0&cpu=LGX&elem_size=4&elem_count=200&name=pcomm_test_dint_array'\n"
+            "Example: tag_rw -t uint32 -p 'protocol=ab_eip&path=10.206.1.27,1,0&plc=LGX&elem_size=4&elem_count=200&name=pcomm_test_dint_array'\n"
             "Note: Use double quotes \"\" for the path string in Windows.\n");
 }
 

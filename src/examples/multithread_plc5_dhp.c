@@ -6,7 +6,7 @@
 #include "../lib/libplctag.h"
 #include "utils.h"
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.39&path=1,2,A:27:1&cpu=plc5&elem_count=1&elem_size=2&name=N7:0&debug=4"
+#define TAG_PATH "protocol=ab_eip&path=10.206.1.39,1,2,A:27:1&plc=plc5-dhp&elem_count=1&elem_size=2&name=N7:0&debug=4"
 #define ELEM_COUNT 1
 #define ELEM_SIZE 2
 #define DATA_TIMEOUT 1000

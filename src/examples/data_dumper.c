@@ -28,7 +28,7 @@
 #include "../lib/libplctag.h"
 #include "utils.h"
 
-#define TAG_PATH "protocol=ab_eip&gateway=192.168.1.7&path=1,0&cpu=LGX&elem_size=4&elem_count=125&name=LogData"
+#define TAG_PATH "protocol=ab_eip&path=192.168.1.7,1,0&cpu=LGX&elem_size=4&elem_count=125&name=LogData"
 #define ELEM_COUNT 125
 #define ELEM_SIZE 4
 #define DATA_TIMEOUT 1000

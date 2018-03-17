@@ -29,11 +29,13 @@
 #include "../lib/libplctag.h"
 #include "utils.h"
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.39&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=TestDINTArray[%d]&debug=3"
+#define TAG_PATH "protocol=ab_eip&path=10.206.1.39,1,0&plc=LGX&elem_size=4&elem_count=1&name=TestDINTArray[%d]&debug=3"
 
 #define DATA_TIMEOUT 1500
 
-
+/*
+ * FIXME - with the use of connections all the time, this is not correct any more. 
+ */
 
 /*
  * This test program creates a lot of threads that read the same tag in
@@ -52,7 +54,7 @@ volatile int test_flags = 0;
 void *test_dhp(void *data)
 {
     int tid = (int)(intptr_t)data;
-    static const char *tag_str = "protocol=ab_eip&gateway=10.206.1.39&path=1,2,A:27:1&cpu=plc5&elem_count=1&elem_size=2&name=N7:0&debug=3";
+    static const char *tag_str = "protocol=ab_eip&path=10.206.1.39,1,2,A:27:1&cpu=plc5-dhp&elem_count=1&elem_size=2&name=N7:0&debug=3";
     int16_t value;
     uint64_t start;
     uint64_t end;
@@ -113,9 +115,9 @@ void *test_dhp(void *data)
 void *test_cip(void *data)
 {
     int tid = (int)(intptr_t)data;
-    static const char *tag_str_no_connect = "protocol=ab_eip&gateway=10.206.1.39&path=1,0&cpu=lgx&elem_size=4&elem_count=1&name=TestDINTArray[0]&debug=4";
-    static const char *tag_str_connect_shared = "protocol=ab_eip&gateway=10.206.1.39&path=1,0&cpu=micro800&elem_size=4&elem_count=1&name=TestDINTArray[0]&debug=4";
-    static const char *tag_str_connect_not_shared = "protocol=ab_eip&gateway=10.206.1.39&path=1,0&cpu=micro800&share_session=0&elem_size=4&elem_count=1&name=TestDINTArray[0]&debug=4";
+    static const char *tag_str_no_connect = "protocol=ab_eip&path=10.206.1.39,1,0&plc=lgx&elem_size=4&elem_count=1&name=TestDINTArray[0]&debug=4";
+    static const char *tag_str_connect_shared = "protocol=ab_eip&path=10.206.1.39,1,0&plc=micro800&elem_size=4&elem_count=1&name=TestDINTArray[0]&debug=4";
+    static const char *tag_str_connect_not_shared = "protocol=ab_eip&path=10.206.1.39,1,0&plc=micro800&share_session=0&elem_size=4&elem_count=1&name=TestDINTArray[0]&debug=4";
     const char * tag_str = NULL;
     int32_t value;
     uint64_t start;

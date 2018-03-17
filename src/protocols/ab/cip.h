@@ -31,7 +31,8 @@
 #include <ab/ab_common.h>
 
 
-int cip_encode_path(ab_tag_p tag, const char *path);
+//int cip_encode_path(ab_tag_p tag, const char *path);
+extern int cip_encode_path(const char *path, uint8_t **conn_path, uint8_t *conn_path_size, int *use_dhp);
 //~ char *cip_decode_status(int status);
 int cip_encode_tag_name(ab_tag_p tag,const char *name);
 

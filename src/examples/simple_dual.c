@@ -30,8 +30,8 @@
  */
 
 
-#define TAG_PATH1 "protocol=ab_eip&gateway=10.206.1.39&path=1,0&cpu=LGX&elem_size=4&elem_count=10&name=TestDINTArray&debug=1"
-#define TAG_PATH2 "protocol=ab_eip&gateway=10.206.1.39&path=1,2,A:27:1&cpu=plc5&elem_count=4&elem_size=4&name=F8:0&debug=1"
+#define TAG_PATH1 "protocol=ab_eip&path=10.206.1.39,1,0&plc=LGX&elem_size=4&elem_count=10&name=TestDINTArray&debug=1"
+#define TAG_PATH2 "protocol=ab_eip&path=10.206.1.39,1,2,A:27:1&plc=plc5-dhp&elem_count=4&elem_size=4&name=F8:0&debug=1"
 #define DATA_TIMEOUT 1000
 
 

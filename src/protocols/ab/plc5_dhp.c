@@ -34,8 +34,8 @@
 #include <ab/pccc.h>
 #include <ab/plc5_dhp.h>
 #include <ab/tag.h>
-#include <ab/connection.h>
-#include <ab/session.h>
+//#include <ab/connection.h>
+#include <ab/plc.h>
 #include <ab/eip.h>
 #include <util/debug.h>
 #include <util/mem.h>
@@ -68,7 +68,7 @@ static int check_write_status(ab_tag_p tag);
 int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
-    int session_rc = PLCTAG_STATUS_OK;
+    int plc_rc = PLCTAG_STATUS_OK;
     int connection_rc = PLCTAG_STATUS_OK;
 
     if(tag->read_in_progress) {
@@ -84,26 +84,26 @@ int tag_status(ab_tag_p tag)
     }
 
     /* propagate the status up. */
-    if (tag->session) {
-        session_rc = session_status(tag->session);
+    if (tag->plc) {
+        plc_rc = plc_status(tag->plc);
     } else {
         /* this is not OK.  This is fatal! */
-        session_rc = PLCTAG_ERR_CREATE;
+        plc_rc = PLCTAG_ERR_CREATE;
     }
 
-    if(tag->needs_connection) {
-        if(tag->connection) {
-            connection_rc = connection_status(tag->connection);
-        } else {
-            /* fatal! */
-            connection_rc = PLCTAG_ERR_CREATE;
-        }
-    } else {
+//    if(tag->needs_connection) {
+//        if(tag->connection) {
+//            //connection_rc = connection_status(tag->connection);
+//        } else {
+//            /* fatal! */
+//            connection_rc = PLCTAG_ERR_CREATE;
+//        }
+//    } else {
         connection_rc = PLCTAG_STATUS_OK;
-    }
+//    }
 
     /* now collect the status.  Highest level wins. */
-    rc = session_rc;
+    rc = plc_rc;
 
     if(rc == PLCTAG_STATUS_OK) {
         rc = connection_rc;
@@ -207,27 +207,27 @@ int tag_read_start(ab_tag_p tag)
     /* PCCC Command */
     pccc->pccc_command = AB_EIP_PCCC_TYPED_CMD;
     pccc->pccc_status = 0;  /* STS 0 in request */
-    pccc->pccc_seq_num = /*h2le16(conn_seq_id)*/ h2le16((uint16_t)(intptr_t)(tag->connection));
+    pccc->pccc_seq_num = /*h2le16(conn_seq_id)*/ h2le16((uint16_t)(intptr_t)(tag->plc));
     pccc->pccc_function = AB_EIP_PCCC_TYPED_READ_FUNC;
     pccc->pccc_transfer_size = h2le16(tag->elem_count); /* This is not in the docs, but it is in the data. */
 
-    /* get ready to add the request to the queue for this session */
+    /* get ready to add the request to the queue for this PLC */
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+//    req->connection = tag->connection;
 
-    /* this request is connected, so it needs the session exclusively */
+    /* this request is connected, so it needs the PLC exclusively */
     req->connected_request = 1;
 
     /* mark the request ready for sending */
     req->send_request = 1;
 
-    /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(tag->plc, req);
 
     if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
+        pdebug(DEBUG_ERROR, "Unable to add request to PLC! rc=%d", rc);
         tag->reqs[0] = rc_dec(req);
         return rc;
     }
@@ -376,27 +376,27 @@ int tag_write_start(ab_tag_p tag)
     /* PCCC Command */
     pccc->pccc_command = AB_EIP_PCCC_TYPED_CMD;
     pccc->pccc_status = 0;  /* STS 0 in request */
-    pccc->pccc_seq_num = h2le16((uint16_t)(intptr_t)(tag->connection));
+    pccc->pccc_seq_num = h2le16((uint16_t)(intptr_t)(tag->plc));
     pccc->pccc_function = AB_EIP_PCCC_TYPED_WRITE_FUNC;
     pccc->pccc_transfer_size = h2le16(tag->elem_count); /* This is not in the docs, but it is in the data. */
 
-    /* get ready to add the request to the queue for this session */
+    /* get ready to add the request to the queue for this PLC */
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+//    req->connection = tag->connection;
 
     /* ready the request for sending */
     req->send_request = 1;
 
-    /* this request is connected, so it needs the session exclusively */
+    /* this request is connected, so it needs the PLC exclusively */
     req->connected_request = 1;
 
-    /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(tag->plc, req);
 
     if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
+        pdebug(DEBUG_ERROR, "Unable to add request to PLC! rc=%d", rc);
         tag->reqs[0] = rc_dec(req);
         return rc;
     }

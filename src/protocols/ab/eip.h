@@ -30,7 +30,7 @@
 
 #include <ab/ab_common.h>
 #include <ab/request.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 
 
 //int send_eip_request_unsafe(ab_request_p req);
@@ -196,10 +196,12 @@
 
 
 /* Types of AB protocols */
-#define AB_PROTOCOL_PLC     1
-#define AB_PROTOCOL_MLGX    2
-#define AB_PROTOCOL_LGX     3
-#define AB_PROTOCOL_MLGX800 4
+//typedef enum { AB_PLC_TYPE_PLC=1, AB_PLC_TYPE_PLC_DHP, AB_PLC_TYPE_MLGX, AB_PLC_TYPE_LGX, AB_PLC_TYPE_MLGX800 } plc_type_t;
+//#define AB_PLC_TYPE_PLC     (1)
+//#define AB_PLC_TYPE_MLGX    (2)
+//#define AB_PLC_TYPE_LGX     (3)
+//#define AB_PLC_TYPE_MLGX800 (4)
+//#define AB_PLC_TYPE_PLC_DHP (5)
 
 
 /*********************************************************************

@@ -37,8 +37,8 @@ typedef struct ab_tag_t *ab_tag_p;
 typedef struct ab_connection_t *ab_connection_p;
 #define AB_CONNECTION_NULL ((ab_connection_p)NULL)
 
-typedef struct ab_session_t *ab_session_p;
-#define AB_SESSION_NULL ((ab_session_p)NULL)
+typedef struct ab_plc_t *ab_plc_p;
+#define AB_PLC_NULL ((ab_plc_p)NULL)
 
 typedef struct ab_request_t *ab_request_p;
 #define AB_REQUEST_NULL ((ab_request_p)NULL)
@@ -52,11 +52,11 @@ typedef struct ab_request_t *ab_request_p;
 extern int tag_abort(ab_tag_p tag);
 //extern int ab_tag_destroy(ab_tag_p p_tag);
 
-extern int check_cpu(ab_tag_p tag, attr attribs);
+extern int check_cpu(/*ab_tag_p tag, */attr attribs);
 extern int check_tag_name(ab_tag_p tag, const char *name);
 extern int check_mutex(int debug);
 
 
-#define LIVEOBJ_TYPE_AB_SESSION (100)
+//#define LIVEOBJ_TYPE_AB_PLC (100)
 
 #endif

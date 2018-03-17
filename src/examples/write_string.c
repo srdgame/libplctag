@@ -31,7 +31,7 @@
  */
 
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.27&path=1,0&cpu=LGX&elem_size=88&elem_count=6&debug=1&name=Loc_Txt"
+#define TAG_PATH "protocol=ab_eip&path=10.206.1.27,1,0&plc=LGX&elem_size=88&elem_count=6&debug=1&name=Loc_Txt"
 #define ARRAY_1_DIM_SIZE (48)
 #define ARRAY_2_DIM_SIZE (6)
 #define STRING_DATA_SIZE (82)

@@ -33,6 +33,7 @@
 #include <util/refcount.h>
 
 
+typedef struct attr_entry_t *attr_entry;
 
 
 struct attr_entry_t {
@@ -45,7 +46,6 @@ struct attr_t {
     attr_entry head;
 };
 
-typedef struct attr_entry_t *attr_entry;
 
 
 static attr_entry find_entry(attr a, const char *name);

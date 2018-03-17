@@ -7,7 +7,7 @@
 #include "../lib/libplctag.h"
 #include "utils.h"
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.17.45.37&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=DataIn_Frm_Sched[1]&read_cache_ms=100"
+#define TAG_PATH "protocol=ab_eip&path=10.17.45.37,1,0&plc=LGX&elem_size=4&elem_count=1&name=DataIn_Frm_Sched[1]&read_cache_ms=100"
 #define ELEM_COUNT 1
 #define ELEM_SIZE 4
 #define DATA_TIMEOUT 500

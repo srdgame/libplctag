@@ -27,7 +27,7 @@
 #include <ab/ab_common.h>
 #include <ab/cip.h>
 #include <ab/tag.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/logix.h>
 #include <ab/error_codes.h>
 #include <util/attr.h>
@@ -73,7 +73,7 @@ static int calculate_write_sizes(ab_tag_p tag);
 int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
-    int session_rc = PLCTAG_STATUS_OK;
+    int plc_rc = PLCTAG_STATUS_OK;
     int connection_rc = PLCTAG_STATUS_OK;
 
     if (tag->read_in_progress) {
@@ -115,17 +115,17 @@ int tag_status(ab_tag_p tag)
      *   N1         N2      OK        N1
      *   N1         N2      N3        N1
      */
-    if (tag->session) {
-        session_rc = session_status(tag->session);
+    if (tag->plc) {
+        plc_rc = plc_status(tag->plc);
     } else {
         /* this is not OK.  This is fatal! */
-        session_rc = PLCTAG_ERR_CREATE;
+        plc_rc = PLCTAG_ERR_CREATE;
     }
 
-    connection_rc = connection_status(tag->connection);
+    //connection_rc = connection_status(tag->connection);
     
     /* now collect the status.  Highest level wins. */
-    rc = session_rc;
+    rc = plc_rc;
 
     if(rc == PLCTAG_STATUS_OK) {
         rc = connection_rc;
@@ -461,19 +461,19 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+    //req->connection = tag->connection;
 
     /* mark it as ready to send */
     req->send_request = 1;
 
-    /* this request is connected, so it needs the session exclusively */
+    /* this request is connected, so it needs the PLC exclusively */
     req->connected_request = 1;
 
-    /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(tag->plc, req);
 
     if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
+        pdebug(DEBUG_ERROR, "Unable to add request to PLC! rc=%d", rc);
         tag->reqs[slot] = rc_dec(req);
         return rc;
     }
@@ -590,16 +590,16 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->send_request = 1;
 
     /* store the connection */
-    req->connection = tag->connection;
+    //req->connection = tag->connection;
 
     /* mark the request as a connected request */
     req->connected_request = 1;
 
-    /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    /* add the request to the PLC's list. */
+    rc = plc_add_request(tag->plc, req);
 
     if (rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
+        pdebug(DEBUG_ERROR, "Unable to add request to PLC! rc=%d", rc);
         tag->reqs[slot] = rc_dec(req);
         return rc;
     }
@@ -974,7 +974,7 @@ int calculate_write_sizes(ab_tag_p tag)
                + 1                           /* service request, one byte */
                + tag->encoded_name_size      /* full encoded name */
                + tag->encoded_type_info_size /* encoded type size */
-               + tag->conn_path_size + 2     /* encoded device path size plus two bytes for length and padding */
+               /*+ tag->conn_path_size + 2*/     /* encoded device path size plus two bytes for length and padding */
                + 2                           /* element count, 16-bit int */
                + 4                           /* byte offset, 32-bit int */
                + 8;                          /* MAGIC fudge factor */

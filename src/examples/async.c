@@ -31,7 +31,7 @@
 #include "utils.h"
 
 
-#define TAG_PATH "protocol=ab_eip&gateway=10.206.1.27&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=pcomm_test_dint_array[%d]"
+#define TAG_PATH "protocol=ab_eip&path=10.206.1.39,1,0&cpu=LGX&elem_size=4&elem_count=1&name=pcomm_test_dint_array[%d]"
 #define NUM_TAGS 150
 #define DATA_TIMEOUT 1000
 
