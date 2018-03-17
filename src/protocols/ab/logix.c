@@ -90,7 +90,7 @@ int tag_status(ab_tag_p tag)
     int connection_rc = PLCTAG_STATUS_OK;
 
     if (tag->read_in_progress) {
-        if(tag->connection) {
+        if(tag->needs_connection) {
             rc = check_read_status_connected(tag);
         } else {
             rc = check_read_status_unconnected(tag);
@@ -100,7 +100,7 @@ int tag_status(ab_tag_p tag)
     }
 
     if (tag->write_in_progress) {
-        if(tag->connection) {
+        if(tag->needs_connection) {
             rc = check_write_status_connected(tag);
         } else {
             rc = check_write_status_unconnected(tag);
@@ -144,8 +144,8 @@ int tag_status(ab_tag_p tag)
     }
 
     if(tag->needs_connection) {
-        if(tag->connection) {
-            connection_rc = connection_status(tag->connection);
+        if(tag->needs_connection) {
+            //connection_rc = connection_status(tag->connection);
         } else {
             /* fatal! */
             connection_rc = PLCTAG_ERR_CREATE;
@@ -220,7 +220,7 @@ int tag_read_start(ab_tag_p tag)
         pdebug(DEBUG_DETAIL, "First read tag->num_read_requests=%d, byte_offset=%d.", tag->num_read_requests, byte_offset);
 
         /* i is the index of the first new request */
-        if(tag->connection) {
+        if(tag->needs_connection) {
             rc = build_read_request_connected(tag, i, byte_offset);
         } else {
             rc = build_read_request_unconnected(tag, i, byte_offset);
@@ -236,7 +236,7 @@ int tag_read_start(ab_tag_p tag)
         byte_offset = 0;
 
         for (i = 0; i < tag->num_read_requests; i++) {
-            if(tag->connection) {
+            if(tag->needs_connection) {
                 rc = build_read_request_connected(tag, i, byte_offset);
             } else {
                 rc = build_read_request_unconnected(tag, i, byte_offset);
@@ -308,7 +308,7 @@ int tag_write_start(ab_tag_p tag)
     byte_offset = 0;
 
     for (i = 0; i < tag->num_write_requests; i++) {
-        if(tag->connection) {
+        if(tag->needs_connection) {
             rc = build_write_request_connected(tag, i, byte_offset);
         } else {
             rc = build_write_request_unconnected(tag, i, byte_offset);
@@ -506,7 +506,7 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+    //req->connection = tag->connection;
 
     /* mark it as ready to send */
     req->send_request = 1;
@@ -598,14 +598,14 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
      * uint8_t reserved/pad (zero)
      * uint8_t[...] path (padded to even number of bytes)
      */
-    if(tag->conn_path_size > 0) {
-        *data = (tag->conn_path_size) / 2; /* in 16-bit words */
-        data++;
-        *data = 0; /* reserved/pad */
-        data++;
-        mem_copy(data, tag->conn_path, tag->conn_path_size);
-        data += tag->conn_path_size;
-    }
+//    if(tag->conn_path_size > 0) {
+//        *data = (tag->conn_path_size) / 2; /* in 16-bit words */
+//        data++;
+//        *data = 0; /* reserved/pad */
+//        data++;
+//        mem_copy(data, tag->conn_path, tag->conn_path_size);
+//        data += tag->conn_path_size;
+//    }
 
     /* now we go back and fill in the fields of the static part */
 
@@ -764,7 +764,7 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->send_request = 1;
 
     /* store the connection */
-    req->connection = tag->connection;
+    //req->connection = tag->connection;
 
     /* mark the request as a connected request */
     req->connected_request = 1;
@@ -878,13 +878,13 @@ int build_write_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
      * how to get to the target device.
      */
 
-    /* Now copy in the routing information for the embedded message */
-    *data = (tag->conn_path_size) / 2; /* in 16-bit words */
-    data++;
-    *data = 0;
-    data++;
-    mem_copy(data, tag->conn_path, tag->conn_path_size);
-    data += tag->conn_path_size;
+//    /* Now copy in the routing information for the embedded message */
+//    *data = (tag->conn_path_size) / 2; /* in 16-bit words */
+//    data++;
+//    *data = 0;
+//    data++;
+//    mem_copy(data, tag->conn_path, tag->conn_path_size);
+//    data += tag->conn_path_size;
 
     /* now fill in the rest of the structure. */
 
@@ -1616,7 +1616,7 @@ int calculate_write_sizes(ab_tag_p tag)
     }
 
     /* if we are here, then we have all the type data etc. */
-    if(tag->connection) {
+    if(tag->needs_connection) {
         overhead = sizeof(eip_cip_co_req);
     } else {
         overhead = sizeof(eip_cip_uc_req);
@@ -1627,7 +1627,7 @@ int calculate_write_sizes(ab_tag_p tag)
                + 1                           /* service request, one byte */
                + tag->encoded_name_size      /* full encoded name */
                + tag->encoded_type_info_size /* encoded type size */
-               + tag->conn_path_size + 2     /* encoded device path size plus two bytes for length and padding */
+               /*+ tag->conn_path_size + 2 */    /* encoded device path size plus two bytes for length and padding */
                + 2                           /* element count, 16-bit int */
                + 4                           /* byte offset, 32-bit int */
                + 8;                          /* MAGIC fudge factor */

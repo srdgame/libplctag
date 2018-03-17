@@ -36,7 +36,7 @@ extern "C"
 #include <ab/pccc.h>
 #include <ab/plc5.h>
 #include <ab/tag.h>
-#include <ab/connection.h>
+//#include <ab/connection.h>
 #include <ab/plc.h>
 #include <ab/eip.h>
 #include <util/debug.h>
@@ -88,16 +88,16 @@ int tag_status(ab_tag_p tag)
         plc_rc = PLCTAG_ERR_CREATE;
     }
 
-    if(tag->needs_connection) {
-        if(tag->connection) {
-            connection_rc = connection_status(tag->connection);
-        } else {
-            /* fatal! */
-            connection_rc = PLCTAG_ERR_CREATE;
-        }
-    } else {
+//    if(tag->needs_connection) {
+//        if(tag->connection) {
+//            //connection_rc = connection_status(tag->connection);
+//        } else {
+//            /* fatal! */
+//            connection_rc = PLCTAG_ERR_CREATE;
+//        }
+//    } else {
         connection_rc = PLCTAG_STATUS_OK;
-    }
+//    }
 
     /* now collect the status.  Highest level wins. */
     rc = plc_rc;

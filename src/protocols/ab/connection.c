@@ -282,13 +282,13 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
      * This sets up the packet size, among other things.
      */
     switch(tag->protocol_type) {
-        case AB_PROTOCOL_PLC:
-        case AB_PROTOCOL_MLGX:
+        case AB_PLC_TYPE_PLC:
+        case AB_PLC_TYPE_MLGX:
             connection->conn_params = AB_EIP_PLC5_PARAM;
             break;
 
-        case AB_PROTOCOL_LGX:
-        case AB_PROTOCOL_MLGX800:
+        case AB_PLC_TYPE_LGX:
+        case AB_PLC_TYPE_MLGX800:
             connection->conn_params = AB_EIP_LGX_PARAM;
             break;
 

@@ -52,7 +52,7 @@ typedef struct ab_request_t *ab_request_p;
 extern int tag_abort(ab_tag_p tag);
 //extern int ab_tag_destroy(ab_tag_p p_tag);
 
-extern int check_cpu(ab_tag_p tag, attr attribs);
+extern int check_cpu(/*ab_tag_p tag, */attr attribs);
 extern int check_tag_name(ab_tag_p tag, const char *name);
 extern int check_mutex(int debug);
 

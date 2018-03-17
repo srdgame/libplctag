@@ -122,7 +122,7 @@ int tag_status(ab_tag_p tag)
         plc_rc = PLCTAG_ERR_CREATE;
     }
 
-    connection_rc = connection_status(tag->connection);
+    //connection_rc = connection_status(tag->connection);
     
     /* now collect the status.  Highest level wins. */
     rc = plc_rc;
@@ -461,7 +461,7 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+    //req->connection = tag->connection;
 
     /* mark it as ready to send */
     req->send_request = 1;
@@ -590,7 +590,7 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->send_request = 1;
 
     /* store the connection */
-    req->connection = tag->connection;
+    //req->connection = tag->connection;
 
     /* mark the request as a connected request */
     req->connected_request = 1;
@@ -974,7 +974,7 @@ int calculate_write_sizes(ab_tag_p tag)
                + 1                           /* service request, one byte */
                + tag->encoded_name_size      /* full encoded name */
                + tag->encoded_type_info_size /* encoded type size */
-               + tag->conn_path_size + 2     /* encoded device path size plus two bytes for length and padding */
+               /*+ tag->conn_path_size + 2*/     /* encoded device path size plus two bytes for length and padding */
                + 2                           /* element count, 16-bit int */
                + 4                           /* byte offset, 32-bit int */
                + 8;                          /* MAGIC fudge factor */

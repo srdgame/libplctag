@@ -41,12 +41,12 @@
 
 
 
-extern int connection_find_or_create(ab_tag_p tag, attr attribs);
-extern int connection_status(ab_connection_p connection);
-extern const char *connection_path(ab_connection_p connection);
-extern uint32_t connection_targ_id(ab_connection_p connection);
-extern uint32_t connection_orig_id(ab_connection_p connection);
-extern uint16_t connection_next_seq(ab_connection_p connection);
+//extern int connection_find_or_create(ab_tag_p tag, attr attribs);
+//extern int connection_status(ab_connection_p connection);
+//extern const char *connection_path(ab_connection_p connection);
+//extern uint32_t connection_targ_id(ab_connection_p connection);
+//extern uint32_t connection_orig_id(ab_connection_p connection);
+//extern uint16_t connection_next_seq(ab_connection_p connection);
 
 
 #endif

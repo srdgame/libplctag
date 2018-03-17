@@ -34,6 +34,9 @@
 #include <util/refcount.h>
 
 
+typedef enum { AB_PLC_TYPE_PLC=1, AB_PLC_TYPE_PLC_DHP, AB_PLC_TYPE_MLGX, AB_PLC_TYPE_LGX, AB_PLC_TYPE_MLGX800 } plc_type_t;
+
+
 #define MAX_SESSION_HOST    (128)
 
 /* the following are in microseconds*/
@@ -65,17 +68,17 @@
 uint64_t plc_get_new_seq_id(ab_plc_p sess);
 
 extern int plc_find_or_create(ab_plc_p *plc, attr attribs);
-ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path);
+//ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path);
 //extern int plc_add_connection_unsafe(ab_plc_p plc, ab_connection_p connection);
-extern int plc_add_connection(ab_plc_p plc, ab_connection_p connection);
-extern int plc_remove_connection_unsafe(ab_plc_p plc, ab_connection_p connection);
-extern int plc_remove_connection(ab_plc_p plc, ab_connection_p connection);
+//extern int plc_add_connection(ab_plc_p plc, ab_connection_p connection);
+//extern int plc_remove_connection_unsafe(ab_plc_p plc, ab_connection_p connection);
+//extern int plc_remove_connection(ab_plc_p plc, ab_connection_p connection);
 //extern int plc_add_request_unsafe(ab_plc_p sess, ab_request_p req);
 extern int plc_add_request(ab_plc_p sess, ab_request_p req);
 //extern int plc_remove_request_unsafe(ab_plc_p sess, ab_request_p req);
 extern int plc_remove_request(ab_plc_p sess, ab_request_p req);
 
-extern uint32_t plc_get_new_connection_id(ab_plc_p plc);
+//extern uint32_t plc_get_new_connection_id(ab_plc_p plc);
 //extern int plc_status_unsafe(ab_plc_p plc);
 
 /* send/receive packets. */
@@ -83,6 +86,7 @@ extern uint32_t plc_get_new_connection_id(ab_plc_p plc);
 //extern int send_eip_request_unsafe(ab_request_p req);
 
 extern int plc_status(ab_plc_p plc);
+extern plc_type_t plc_get_type(ab_plc_p plc);
 
 
 extern int plc_setup();

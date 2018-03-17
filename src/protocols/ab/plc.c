@@ -28,8 +28,9 @@
 
 #include <platform.h>
 #include <ab/ab_common.h>
+#include <ab/cip.h>
 #include <ab/plc.h>
-#include <ab/connection.h>
+//#include <ab/connection.h>
 #include <ab/request.h>
 #include <ab/eip.h>
 #include <util/debug.h>
@@ -47,6 +48,8 @@ struct ab_plc_t {
     struct liveobj_t liveobj;
     int id;
     
+    plc_type_t plc_type;
+    
     int registered;
 
     thread_p setup_thread;
@@ -55,7 +58,8 @@ struct ab_plc_t {
     mutex_p mutex;
     
     /* gateway connection related info */
-    char host[MAX_SESSION_HOST];
+    char *path;
+    char *host;
     int port;
     sock_p sock;
     int is_connected;
@@ -66,6 +70,15 @@ struct ab_plc_t {
 
     /* Sequence ID for requests. */
     uint64_t session_seq_id;
+    
+    /* connection info */
+    uint8_t *conn_path;
+    uint8_t conn_path_size;
+    uint16_t conn_params;
+    uint32_t orig_connection_id;
+    uint32_t targ_connection_id;
+    uint16_t conn_seq_num;
+    int use_dhp;
 
     /* current request being sent, only one at a time */
     ab_request_p current_request;
@@ -91,7 +104,7 @@ struct ab_plc_t {
     uint8_t recv_data[MAX_REQ_RESP_SIZE];
 
     /* connection for this PLC */
-    ab_connection_p connection;
+    //ab_connection_p connection;
     uint32_t conn_serial_number; /* id for the next connection */
 };
 
@@ -107,10 +120,10 @@ mutex_p global_plc_mut = NULL;
 
 
 
-static ab_plc_p plc_create_unsafe(const char* host, int gw_port);
+static ab_plc_p plc_create_unsafe(attr attribs);
 static THREAD_FUNC(plc_init);
 static int add_plc_unsafe(ab_plc_p n);
-static int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg);
+static int find_plc_by_path_unsafe(liveobj_p obj, int type, void *path_arg);
 static int plc_connect(ab_plc_p plc);
 static void plc_destroy(rc_ptr plc);
 static int session_register(ab_plc_p plc);
@@ -122,6 +135,10 @@ static int plc_remove_request_unsafe(ab_plc_p plc, ab_request_p req);
 static void plc_handler(ab_plc_p plc);
 static int plc_check_incoming_data(ab_plc_p plc);
 static int plc_check_outgoing_data(ab_plc_p plc);
+
+static int connection_open(ab_plc_p plc);
+static int encode_forward_open_request(ab_plc_p plc);
+static int decode_forward_open_response(ab_plc_p plc);
 
 
 /*
@@ -172,160 +189,163 @@ uint64_t plc_get_new_seq_id(ab_plc_p sess)
 //    return 1;
 //}
 
-
-
-ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path)
+plc_type_t plc_get_type(ab_plc_p plc)
 {
-    ab_connection_p connection;
-    
-    (void)path;
+    return plc->plc_type;
+}
 
-    connection = plc->connection;
+//ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p plc,const char *path)
+//{
+//    ab_connection_p connection;
+//    
+//    (void)path;
+//
+//    connection = plc->connection;
+//
+//    /*
+//     * there are a lot of conditions.
+//     * We do not want to use connections that are in the process of shutting down.
+//     * We do not want to use connections that are used exclusively by one tag.
+//     * We want to use connections that have the same path as the tag.
+//     */
+////    while (connection && !connection_is_usable_unsafe(connection) && str_cmp_i(connection_path(connection), path) != 0) {
+////        connection = connection->next;
+////    }
+//
+//
+////    /* add to the ref count since we found an existing one. */
+////    if(connection) {
+////        rc_inc(connection);
+////    }
+//
+//    return rc_inc(connection);
+//}
 
-    /*
-     * there are a lot of conditions.
-     * We do not want to use connections that are in the process of shutting down.
-     * We do not want to use connections that are used exclusively by one tag.
-     * We want to use connections that have the same path as the tag.
-     */
-//    while (connection && !connection_is_usable_unsafe(connection) && str_cmp_i(connection_path(connection), path) != 0) {
-//        connection = connection->next;
+
+
+//int plc_add_connection_unsafe(ab_plc_p plc, ab_connection_p connection)
+//{
+//    pdebug(DEBUG_DETAIL, "Starting");
+//
+//    /* add the connection to the list in the PLC */
+////    connection->next = session->connections;
+////    session->connections = connection;
+//
+//    if(plc->connection) {
+//        pdebug(DEBUG_WARN, "A connection already exists!");
+//    } else {
+//        plc->connection = connection;
 //    }
+//
+//    pdebug(DEBUG_DETAIL, "Done");
+//
+//    return PLCTAG_STATUS_OK;
+//}
+//
 
 
-//    /* add to the ref count since we found an existing one. */
-//    if(connection) {
-//        rc_inc(connection);
+
+//int plc_add_connection(ab_plc_p plc, ab_connection_p connection)
+//{
+//    int rc = PLCTAG_STATUS_OK;
+//
+//    pdebug(DEBUG_DETAIL, "Starting");
+//
+//    if(plc) {
+//        critical_block(plc->mutex) {
+//            rc = plc_add_connection_unsafe(plc, connection);
+//        }
+//    } else {
+//        pdebug(DEBUG_WARN, "PLC ptr is null!");
+//        rc = PLCTAG_ERR_NULL_PTR;
 //    }
-
-    return rc_inc(connection);
-}
-
-
-
-int plc_add_connection_unsafe(ab_plc_p plc, ab_connection_p connection)
-{
-    pdebug(DEBUG_DETAIL, "Starting");
-
-    /* add the connection to the list in the PLC */
-//    connection->next = session->connections;
-//    session->connections = connection;
-
-    if(plc->connection) {
-        pdebug(DEBUG_WARN, "A connection already exists!");
-    } else {
-        plc->connection = connection;
-    }
-
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return PLCTAG_STATUS_OK;
-}
-
-
-
-
-int plc_add_connection(ab_plc_p plc, ab_connection_p connection)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL, "Starting");
-
-    if(plc) {
-        critical_block(plc->mutex) {
-            rc = plc_add_connection_unsafe(plc, connection);
-        }
-    } else {
-        pdebug(DEBUG_WARN, "PLC ptr is null!");
-        rc = PLCTAG_ERR_NULL_PTR;
-    }
-
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return rc;
-}
+//
+//    pdebug(DEBUG_DETAIL, "Done");
+//
+//    return rc;
+//}
 
 /* must have the PLC mutex held here. */
-int plc_remove_connection_unsafe(ab_plc_p plc, ab_connection_p connection)
-{
-//    ab_connection_p cur;
-//    ab_connection_p prev;
-    /* int debug = plc->debug; */
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL, "Starting");
-    
-    if(plc->connection != connection) {
-        pdebug(DEBUG_WARN,"Wrong connection!");
-        return PLCTAG_ERR_NOT_FOUND;
-    }
-    
-    plc->connection = NULL;
-
-//    cur = session->connections;
-//    prev = NULL;
+//int plc_remove_connection_unsafe(ab_plc_p plc, ab_connection_p connection)
+//{
+////    ab_connection_p cur;
+////    ab_connection_p prev;
+//    /* int debug = plc->debug; */
+//    int rc = PLCTAG_STATUS_OK;
 //
-//    while (cur && cur != connection) {
-//        prev = cur;
-//        cur = cur->next;
+//    pdebug(DEBUG_DETAIL, "Starting");
+//    
+//    if(plc->connection != connection) {
+//        pdebug(DEBUG_WARN,"Wrong connection!");
+//        return PLCTAG_ERR_NOT_FOUND;
 //    }
+//    
+//    plc->connection = NULL;
 //
-//    if (cur && cur == connection) {
-//        if (prev) {
-//            prev->next = cur->next;
-//        } else {
-//            session->connections = cur->next;
+////    cur = session->connections;
+////    prev = NULL;
+////
+////    while (cur && cur != connection) {
+////        prev = cur;
+////        cur = cur->next;
+////    }
+////
+////    if (cur && cur == connection) {
+////        if (prev) {
+////            prev->next = cur->next;
+////        } else {
+////            session->connections = cur->next;
+////        }
+////
+////        rc = PLCTAG_STATUS_OK;
+////    } else {
+////        rc = PLCTAG_ERR_NOT_FOUND;
+////    }
+//
+//    pdebug(DEBUG_DETAIL, "Done");
+//
+//    return rc;
+//}
+//
+//int plc_remove_connection(ab_plc_p plc, ab_connection_p connection)
+//{
+//    int rc = PLCTAG_STATUS_OK;
+//
+//    pdebug(DEBUG_DETAIL, "Starting");
+//
+//    if(plc) {
+//        critical_block(plc->mutex) {
+//            rc = plc_remove_connection_unsafe(plc, connection);
 //        }
-//
-//        rc = PLCTAG_STATUS_OK;
 //    } else {
-//        rc = PLCTAG_ERR_NOT_FOUND;
+//        rc = PLCTAG_ERR_NULL_PTR;
 //    }
-
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return rc;
-}
-
-int plc_remove_connection(ab_plc_p plc, ab_connection_p connection)
-{
-    int rc = PLCTAG_STATUS_OK;
-
-    pdebug(DEBUG_DETAIL, "Starting");
-
-    if(plc) {
-        critical_block(plc->mutex) {
-            rc = plc_remove_connection_unsafe(plc, connection);
-        }
-    } else {
-        rc = PLCTAG_ERR_NULL_PTR;
-    }
-
-    pdebug(DEBUG_DETAIL, "Done");
-
-    return rc;
-}
-
-
-uint32_t plc_get_new_connection_id_unsafe(ab_plc_p plc)
-{
-    ++(plc->conn_serial_number);
-    
-    return plc->conn_serial_number;
-}
-
-
-uint32_t plc_get_new_connection_id(ab_plc_p plc)
-{
-    uint32_t result = 0;
-    
-    critical_block(plc->mutex) {
-        result = plc_get_new_connection_id_unsafe(plc);
-    }
-    
-    return result;
-}
-
+//
+//    pdebug(DEBUG_DETAIL, "Done");
+//
+//    return rc;
+//}
+//
+//
+//uint32_t plc_get_new_connection_id_unsafe(ab_plc_p plc)
+//{
+//    ++(plc->conn_serial_number);
+//    
+//    return plc->conn_serial_number;
+//}
+//
+//
+//uint32_t plc_get_new_connection_id(ab_plc_p plc)
+//{
+//    uint32_t result = 0;
+//    
+//    critical_block(plc->mutex) {
+//        result = plc_get_new_connection_id_unsafe(plc);
+//    }
+//    
+//    return result;
+//}
+//
 
 int plc_status(ab_plc_p plc)
 {
@@ -346,28 +366,29 @@ int plc_status(ab_plc_p plc)
 int plc_find_or_create(ab_plc_p *tag_plc, attr attribs)
 {
     /*int debug = attr_get_int(attribs,"debug",0);*/
-    const char* plc_gw = attr_get_str(attribs, "gateway", "");
-    int plc_gw_port = attr_get_int(attribs, "gateway_port", AB_EIP_DEFAULT_PORT);
+    const char *path = attr_get_str(attribs,"path",NULL);
+//    const char* plc_gw = attr_get_str(attribs, "gateway", "");
+//    int plc_gw_port = attr_get_int(attribs, "gateway_port", AB_EIP_DEFAULT_PORT);
     ab_plc_p plc = AB_PLC_NULL;
     //int new_plc = 0;
-    int shared_session = attr_get_int(attribs, "share_session", 1); /* share the session by default. */
+//    int shared_session = attr_get_int(attribs, "share_session", 1); /* share the session by default. */
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_DETAIL, "Starting");
 
     critical_block(global_plc_mut) {
         /* if we are to share sessions, then look for an existing one. */
-        if (shared_session) {
+//        if (shared_session) {
             /* this returns a strong reference */
-            plc = (ab_plc_p)liveobj_find(find_plc_by_host_unsafe, (void *)plc_gw);
-        } else {
-            /* no sharing, create a new one */
-            plc = AB_PLC_NULL;
-        }
+            plc = (ab_plc_p)liveobj_find(find_plc_by_path_unsafe, (void *)path);
+//        } else {
+//            /* no sharing, create a new one */
+//            plc = AB_PLC_NULL;
+//        }
 
         if (plc == AB_PLC_NULL) {
             pdebug(DEBUG_DETAIL,"Creating new PLC.");
-            plc = plc_create_unsafe(plc_gw, plc_gw_port);
+            plc = plc_create_unsafe(attribs);
 
             if (plc == AB_PLC_NULL) {
                 pdebug(DEBUG_WARN, "unable to create or find a PLC object!");
@@ -418,7 +439,7 @@ int add_plc(ab_plc_p s)
 }
 
 
-static int plc_match_valid(const char *host, ab_plc_p plc)
+static int plc_match_valid(const char *path, ab_plc_p plc)
 {
     if(!plc) {
         return 0;
@@ -428,7 +449,7 @@ static int plc_match_valid(const char *host, ab_plc_p plc)
         return 0;
     }
 
-    if(str_cmp_i(host,plc->host)) {
+    if(str_cmp_i(path,plc->path)) {
         return 0;
     }
 
@@ -436,7 +457,7 @@ static int plc_match_valid(const char *host, ab_plc_p plc)
 }
 
 
-int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg)
+int find_plc_by_path_unsafe(liveobj_p obj, int type, void *path_arg)
 {
     ab_plc_p plc;
     
@@ -445,7 +466,7 @@ int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg)
     if(type == LIVEOBJ_TYPE_AB_PLC) {
         plc = (ab_plc_p)obj;
         
-        if(plc_match_valid((const char*)host_arg, plc)) {
+        if(plc_match_valid((const char*)path_arg, plc)) {
             /* this is the right one! */
             pdebug(DEBUG_INFO,"Found PLC!");
             
@@ -460,38 +481,42 @@ int find_plc_by_host_unsafe(liveobj_p obj, int type, void *host_arg)
 
 
 
-ab_plc_p plc_create_unsafe(const char* host, int gw_port)
+ab_plc_p plc_create_unsafe(attr attribs)
 {
-    ab_plc_p plc = AB_PLC_NULL;
     static volatile uint32_t srand_setup = 0;
     static volatile uint32_t connection_id = 0;
+    char **path_segs = NULL;
+    ab_plc_p plc = AB_PLC_NULL;
+    const char* path = attr_get_str(attribs, "path", NULL);
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO, "Starting");
 
-    pdebug(DEBUG_DETAIL, "Warning: not using passed port %d", gw_port);
+    //pdebug(DEBUG_DETAIL, "Warning: not using passed port %d", gw_port);
+    
+    /* split the path into segments and use the first one as the hostname. */
+    path_segs = str_split(path, ",");
+    if(!path_segs) {
+        pdebug(DEBUG_WARN,"Unable to split path string!  Bad or missing path!");
+        return NULL;
+    }
 
     plc = rc_alloc(sizeof(struct ab_plc_t), plc_destroy);
 
     if (!plc) {
         pdebug(DEBUG_WARN, "Error allocating new PLC.");
-        return AB_PLC_NULL;
+        mem_free(path_segs);
+        return NULL;
     }
     
-    /* set the function to handle this object */
-    //plc->plc_obj_func = (liveobj_func)plc_handler;
-
-    str_copy(plc->host, MAX_SESSION_HOST, host);
-
-    plc->status = PLCTAG_STATUS_PENDING;
-
     /* check for ID set up */
     if(srand_setup == 0) {
         srand((unsigned int)time_ms());
         srand_setup = 1;
     }
 
-    if(connection_id == 0) {
+    /* FIXME - this could hang forever! */
+    while(connection_id == 0) {
         connection_id = rand();
     }
 
@@ -507,7 +532,89 @@ ab_plc_p plc_create_unsafe(const char* host, int gw_port)
      * FIXME - this could collide.  The probability is low, but it could happen
      * as there are only 32 bits.
      */
-    plc->conn_serial_number = ++connection_id;
+    plc->orig_connection_id = ++connection_id;
+    //plc->orig_connection_id = plc_get_new_connection_id_unsafe(plc);
+    
+    /* parse the path */
+    rc = cip_encode_path(path, &plc->conn_path, &plc->conn_path_size, &plc->use_dhp);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_WARN,"Unable to parse tag path!");
+        rc_dec(plc);
+        return NULL;
+    }
+
+    plc->plc_type = check_cpu(attribs);
+    switch(plc->plc_type) {
+        case AB_PLC_TYPE_PLC:
+            plc->conn_params = AB_EIP_PLC5_PARAM;
+            break;
+            
+        case AB_PLC_TYPE_PLC_DHP:
+            plc->conn_params = AB_EIP_PLC5_PARAM;
+            break;
+            
+        case AB_PLC_TYPE_MLGX800:
+            plc->conn_params = AB_EIP_LGX_PARAM;
+            break;
+            
+        case AB_PLC_TYPE_MLGX:
+            plc->conn_params = AB_EIP_PLC5_PARAM;
+            break;
+            
+        case AB_PLC_TYPE_LGX:
+            plc->conn_params = AB_EIP_LGX_PARAM;
+            break;
+            
+        default:
+            pdebug(DEBUG_WARN, "Unknown or unsupported PLC type!");
+            rc_dec(plc);
+            return NULL;
+            break;
+    }
+    
+    /* double check the PLC type and path type. */
+    if(plc->plc_type != AB_PLC_TYPE_PLC_DHP && plc->use_dhp) {
+        pdebug(DEBUG_WARN,"Special DH+ routing is only necessary with PLC/5 PLCs!  Unable to create PLC!");
+        rc_dec(plc);
+        return NULL;
+    }
+    
+    if(plc->plc_type == AB_PLC_TYPE_PLC_DHP && !plc->use_dhp) {
+        pdebug(DEBUG_WARN,"You must include special DH+ routing in the path when accessing a PLC/5 via a DH+ bridge!");
+        rc_dec(plc);
+        return NULL;
+    }
+
+    /* 
+     * copy the host name.  Used later during initialization. 
+     * FIXME - can we get a path_segs result that has no strings? 
+     */
+    plc->host = str_dup(path_segs[0]);
+    if(!plc->host) {
+        pdebug(DEBUG_WARN, "Unable to allocate new host name string!");
+        mem_free(path_segs);
+        rc_dec(plc);
+        return NULL;
+    }
+    
+    /* FIXME - should at least check the path elements for a port number. */
+    plc->port = AB_EIP_DEFAULT_PORT;
+    
+    /* copy the path */
+    plc->path = str_dup(path);
+    if(!plc->path) {
+        pdebug(DEBUG_WARN, "Unable to allocate new path string!");
+        mem_free(path_segs);
+        rc_dec(plc);
+        return NULL;
+    }
+    
+    /* done with the path segments. */
+    mem_free(path_segs);
+    path_segs = NULL;
+
+    plc->status = PLCTAG_STATUS_PENDING;
+
 
     /* set up packet round trip information */
     for(int index=0; index < SESSION_NUM_ROUND_TRIP_SAMPLES; index++) {
@@ -544,26 +651,287 @@ THREAD_FUNC(plc_init)
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO, "Starting.");
+    
+    do {
+        /* we must connect to the gateway and register */
+        if ((rc = plc_connect(plc)) != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_WARN, "PLC connect failed!");
+            break;
+        }
 
-    /* we must connect to the gateway and register */
-    if ((rc = plc_connect(plc)) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "PLC connect failed!");
-        plc->status = rc;
-    }
+        if ((rc = session_register(plc)) != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_WARN, "Session registration failed!");
+            break;
+        }
+        
+        if((rc = connection_open(plc)) != PLCTAG_STATUS_OK) {
+            pdebug(DEBUG_WARN, "Unable to open CIP connection to PLC!");
+            break;
+        }
 
-    if (rc == PLCTAG_STATUS_OK && (rc = session_register(plc)) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_WARN, "Session registration failed!");
-        plc->status = rc;
-    }
+        plc->registered = 1;
+    } while(0);
     
     /* record how we did. */
     plc->status = rc;    
-    
+
     pdebug(DEBUG_INFO, "Done.");
 
     THREAD_RETURN(0);
 }
 
+
+
+int encode_forward_open_request(ab_plc_p plc)
+{
+    eip_forward_open_request_t *fo;
+    uint8_t *data;
+    int length = 0;
+
+    pdebug(DEBUG_INFO,"Starting");
+
+    fo = (eip_forward_open_request_t*)(plc->recv_data);
+
+    /* point to the end of the struct */
+    data = (uint8_t *)(fo + 1);
+
+    /* set up the path information. */
+    mem_copy(data, plc->conn_path, plc->conn_path_size);
+    data += plc->conn_path_size;
+    
+    /* get the full length of the packet. */
+    length = data - ((uint8_t*)(fo));
+
+    /* fill in the static parts */
+
+    /* encap header parts */
+    fo->encap_command = h2le16(AB_EIP_READ_RR_DATA); /* 0x006F EIP Send RR Data command */
+    fo->encap_length = h2le16(length - sizeof(eip_encap_t)); /* total length of packet except for encap header */
+    fo->encap_session_handle = plc->session_handle;
+    fo->encap_status = h2le32(0);
+    fo->encap_sender_context = (uint64_t)0;
+    fo->encap_options = h2le32(0);
+    fo->router_timeout = h2le16(1); /* one second is enough ? */
+
+    /* fill in the fields of the request */
+
+    /* CPF parts */
+    fo->cpf_item_count = h2le16(2);                  /* ALWAYS 2 */
+    fo->cpf_nai_item_type = h2le16(AB_EIP_ITEM_NAI); /* null address item type */
+    fo->cpf_nai_item_length = h2le16(0);             /* no data, zero length */
+    fo->cpf_udi_item_type = h2le16(AB_EIP_ITEM_UDI); /* unconnected data item, 0x00B2 */
+    fo->cpf_udi_item_length = h2le16(data - (uint8_t*)(&fo->cm_service_code)); /* length of remaining data in UC data item */
+
+    /* Connection Manager parts */
+    fo->cm_service_code = AB_EIP_CMD_FORWARD_OPEN; /* 0x54 Forward Open Request */
+    fo->cm_req_path_size = 2;                      /* size of path in 16-bit words */
+    fo->cm_req_path[0] = 0x20;                     /* class */
+    fo->cm_req_path[1] = 0x06;                     /* CM class */
+    fo->cm_req_path[2] = 0x24;                     /* instance */
+    fo->cm_req_path[3] = 0x01;                     /* instance 1 */
+
+    /* Forward Open Params */
+    fo->secs_per_tick = AB_EIP_SECS_PER_TICK;         /* seconds per tick, no used? */
+    fo->timeout_ticks = AB_EIP_TIMEOUT_TICKS;         /* timeout = srd_secs_per_tick * src_timeout_ticks, not used? */
+    fo->orig_to_targ_conn_id = h2le32(0);             /* is this right?  Our connection id on the other machines? */
+    fo->targ_to_orig_conn_id = h2le32(plc->orig_connection_id); /* connection id in the other direction. */
+    /* this might need to be globally unique */
+    fo->conn_serial_number = h2le16((uint16_t)(intptr_t)(plc)); /* our connection SEQUENCE number. */
+    fo->orig_vendor_id = h2le16(AB_EIP_VENDOR_ID);               /* our unique :-) vendor ID */
+    fo->orig_serial_number = h2le32(AB_EIP_VENDOR_SN);           /* our serial number. */
+    fo->conn_timeout_multiplier = AB_EIP_TIMEOUT_MULTIPLIER;     /* timeout = mult * RPI */
+    fo->orig_to_targ_rpi = h2le32(AB_EIP_RPI); /* us to target RPI - Request Packet Interval in microseconds */
+    fo->orig_to_targ_conn_params = h2le16(plc->conn_params); /* packet size and some other things, based on protocol/cpu type */
+    fo->targ_to_orig_rpi = h2le32(AB_EIP_RPI); /* target to us RPI - not really used for explicit messages? */
+    fo->targ_to_orig_conn_params = h2le16(plc->conn_params); /* packet size and some other things, based on protocol/cpu type */
+    fo->transport_class = AB_EIP_TRANSPORT_CLASS_T3; /* 0xA3, server transport, class 3, application trigger */
+    fo->path_size = plc->conn_path_size/2; /* size in 16-bit words */
+
+    pdebug(DEBUG_INFO, "Done");
+
+    return length;
+}
+
+
+int decode_forward_open_response(ab_plc_p plc)
+{
+    eip_forward_open_response_t *fo_resp;
+    int rc = PLCTAG_STATUS_OK;
+
+    pdebug(DEBUG_INFO,"Starting");
+
+    fo_resp = (eip_forward_open_response_t*)(plc->recv_data);
+
+    do {
+        if(le2h16(fo_resp->encap_command) != AB_EIP_READ_RR_DATA) {
+            pdebug(DEBUG_WARN,"Unexpected EIP packet type received: %d!",fo_resp->encap_command);
+            rc = PLCTAG_ERR_BAD_DATA;
+            break;
+        }
+
+        if(le2h16(fo_resp->encap_status) != AB_EIP_OK) {
+            pdebug(DEBUG_WARN,"EIP command failed, response code: %d",fo_resp->encap_status);
+            rc = PLCTAG_ERR_REMOTE_ERR;
+            break;
+        }
+
+        if(fo_resp->general_status != AB_EIP_OK) {
+            pdebug(DEBUG_WARN,"Forward Open command failed, response code: %d",fo_resp->general_status);
+            rc = PLCTAG_ERR_REMOTE_ERR;
+            break;
+        }
+
+        plc->targ_connection_id = le2h32(fo_resp->orig_to_targ_conn_id);
+        plc->orig_connection_id = le2h32(fo_resp->targ_to_orig_conn_id);
+
+        pdebug(DEBUG_INFO,"ForwardOpen succeeded with our connection ID %x and the PLC connection ID %x",plc->orig_connection_id, plc->targ_connection_id);
+
+        pdebug(DEBUG_DETAIL,"Connection set up succeeded.");
+    } while(0);
+
+    pdebug(DEBUG_INFO,"Done.");
+
+    return rc;    
+}
+
+
+
+int connection_open(ab_plc_p plc)
+{
+//    eip_session_reg_req* req;
+//    eip_encap_t* resp;
+    int rc = PLCTAG_STATUS_OK;
+    uint32_t data_size = 0;
+    int64_t timeout_time;
+
+    pdebug(DEBUG_INFO, "Starting.");
+
+    /*
+     * clear the PLC data buffer.
+     *
+     * We use the receiving buffer because we do not have a request and nothing can
+     * be coming in (we hope) on the socket yet.
+     */
+    mem_set(plc->recv_data, 0, sizeof(eip_session_reg_req));
+    
+    /* encode the Forward Open request. */
+    data_size = encode_forward_open_request(plc);
+
+    //req = (eip_session_reg_req*)(plc->recv_data);
+
+    /* fill in the fields of the request */
+//    req->encap_command = h2le16(AB_EIP_REGISTER_SESSION);
+//    req->encap_length = h2le16(sizeof(eip_session_reg_req) - sizeof(eip_encap_t));
+//    req->encap_session_handle = plc->session_handle;
+//    req->encap_status = h2le32(0);
+//    req->encap_sender_context = (uint64_t)0;
+//    req->encap_options = h2le32(0);
+//
+//    req->eip_version = h2le16(AB_EIP_VERSION);
+//    req->option_flags = 0;
+
+    /*
+     * socket ops here are _ASYNCHRONOUS_!
+     *
+     * This is done this way because we do not have everything
+     * set up for a request to be handled by the thread.  I think.
+     */
+
+    /* send registration to the gateway */
+    //data_size = sizeof(eip_session_reg_req);
+    plc->recv_offset = 0;
+    timeout_time = time_ms() + SESSION_REGISTRATION_TIMEOUT;
+
+    pdebug(DEBUG_INFO, "sending data:");
+    pdebug_dump_bytes(DEBUG_INFO, plc->recv_data, data_size);
+
+    while (timeout_time > time_ms() && plc->recv_offset < data_size) {
+        rc = socket_write(plc->sock, plc->recv_data + plc->recv_offset, data_size - plc->recv_offset);
+
+        if (rc < 0) {
+            pdebug(DEBUG_WARN, "Unable to send Forward Open packet! rc=%d", rc);
+            plc->recv_offset = 0;
+            return rc;
+        }
+
+        plc->recv_offset += rc;
+
+        /* don't hog the CPU */
+        if (plc->recv_offset < data_size) {
+            sleep_ms(1);
+        }
+    }
+
+    if (plc->recv_offset != data_size) {
+        plc->recv_offset = 0;
+        return PLCTAG_ERR_TIMEOUT;
+    }
+
+    /* get the response from the gateway */
+
+    /* ready the input buffer */
+    plc->recv_offset = 0;
+    mem_set(plc->recv_data, 0, MAX_REQ_RESP_SIZE);
+
+    timeout_time = time_ms() + SESSION_REGISTRATION_TIMEOUT;
+
+    while (timeout_time > time_ms()) {
+        if (plc->recv_offset < sizeof(eip_encap_t)) {
+            data_size = sizeof(eip_encap_t);
+        } else {
+            data_size = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(plc->recv_data))->encap_length);
+        }
+        
+        if(data_size > MAX_REQ_RESP_SIZE) {
+            pdebug(DEBUG_WARN,"Unexpected response size!   Response is %d bytes!", data_size);
+            return PLCTAG_ERR_TOO_LONG;
+        }
+
+        if (plc->recv_offset < data_size) {
+            rc = socket_read(plc->sock, plc->recv_data + plc->recv_offset, data_size - plc->recv_offset);
+
+            if (rc < 0) {
+                if (rc != PLCTAG_ERR_NO_DATA) {
+                    /* error! */
+                    pdebug(DEBUG_WARN, "Error reading socket! rc=%d", rc);
+                    return rc;
+                }
+            } else {
+                plc->recv_offset += rc;
+
+                /* recalculate the amount of data needed if we have just completed the read of an encap header */
+                if (plc->recv_offset >= sizeof(eip_encap_t)) {
+                    data_size = sizeof(eip_encap_t) + le2h16(((eip_encap_t*)(plc->recv_data))->encap_length);
+                }
+            }
+        }
+
+        /* did we get all the data? */
+        if (plc->recv_offset == data_size) {
+            break;
+        } else {
+            /* do not hog the CPU */
+            sleep_ms(1);
+        }
+    }
+
+    if (plc->recv_offset != data_size) {
+        plc->recv_offset = 0;
+        return PLCTAG_ERR_TIMEOUT;
+    }
+
+    /* set the offset back to zero for the next packet */
+    plc->recv_offset = 0;
+
+    pdebug(DEBUG_INFO, "received response:");
+    pdebug_dump_bytes(DEBUG_INFO, plc->recv_data, data_size);
+    
+    rc = decode_forward_open_response(plc);
+
+    pdebug(DEBUG_INFO, "Done.");
+
+    return rc;    
+}
 
 
 /*
@@ -639,6 +1007,21 @@ void plc_destroy(rc_ptr plc_arg)
     while(req) {
         plc_remove_request_unsafe(plc, req);
         req = plc->requests;
+    }
+    
+    if(plc->host) {
+        mem_free(plc->host);
+        plc->host = NULL;
+    }
+    
+    if(plc->path) {
+        mem_free(plc->path);
+        plc->path = NULL;
+    }
+    
+    if(plc->conn_path) {
+        mem_free(plc->conn_path);
+        plc->conn_path = NULL;
     }
 
     pdebug(DEBUG_INFO, "Done.");
@@ -788,7 +1171,7 @@ int session_register(ab_plc_p plc)
      * use it in future packets.
      */
     plc->session_handle = resp->encap_session_handle; /* opaque to us */
-    plc->registered = 1;
+    //plc->registered = 1;
 
     pdebug(DEBUG_INFO, "Done.");
 
@@ -982,11 +1365,11 @@ int send_eip_request_unsafe(ab_request_p req)
             eip_cip_co_req *conn_req = (eip_cip_co_req*)(req->data);
 
             /* set up the connection information */
-            conn_req->cpf_targ_conn_id = h2le32(connection_targ_id(req->connection));
-            req->conn_id = connection_orig_id(req->connection);
+            conn_req->cpf_targ_conn_id = h2le32(req->plc->targ_connection_id);
+            req->conn_id = req->plc->orig_connection_id;
 
-            //req->connection->conn_seq_num++;
-            req->conn_seq = connection_next_seq(req->connection);
+            req->plc->conn_seq_num++;
+            req->conn_seq = req->plc->conn_seq_num;
             conn_req->cpf_conn_seq_num = h2le16(req->conn_seq);
             
 

@@ -34,7 +34,7 @@
 #include <ab/pccc.h>
 #include <ab/plc5_dhp.h>
 #include <ab/tag.h>
-#include <ab/connection.h>
+//#include <ab/connection.h>
 #include <ab/plc.h>
 #include <ab/eip.h>
 #include <util/debug.h>
@@ -91,16 +91,16 @@ int tag_status(ab_tag_p tag)
         plc_rc = PLCTAG_ERR_CREATE;
     }
 
-    if(tag->needs_connection) {
-        if(tag->connection) {
-            connection_rc = connection_status(tag->connection);
-        } else {
-            /* fatal! */
-            connection_rc = PLCTAG_ERR_CREATE;
-        }
-    } else {
+//    if(tag->needs_connection) {
+//        if(tag->connection) {
+//            //connection_rc = connection_status(tag->connection);
+//        } else {
+//            /* fatal! */
+//            connection_rc = PLCTAG_ERR_CREATE;
+//        }
+//    } else {
         connection_rc = PLCTAG_STATUS_OK;
-    }
+//    }
 
     /* now collect the status.  Highest level wins. */
     rc = plc_rc;
@@ -207,7 +207,7 @@ int tag_read_start(ab_tag_p tag)
     /* PCCC Command */
     pccc->pccc_command = AB_EIP_PCCC_TYPED_CMD;
     pccc->pccc_status = 0;  /* STS 0 in request */
-    pccc->pccc_seq_num = /*h2le16(conn_seq_id)*/ h2le16((uint16_t)(intptr_t)(tag->connection));
+    pccc->pccc_seq_num = /*h2le16(conn_seq_id)*/ h2le16((uint16_t)(intptr_t)(tag->plc));
     pccc->pccc_function = AB_EIP_PCCC_TYPED_READ_FUNC;
     pccc->pccc_transfer_size = h2le16(tag->elem_count); /* This is not in the docs, but it is in the data. */
 
@@ -215,7 +215,7 @@ int tag_read_start(ab_tag_p tag)
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+//    req->connection = tag->connection;
 
     /* this request is connected, so it needs the PLC exclusively */
     req->connected_request = 1;
@@ -376,7 +376,7 @@ int tag_write_start(ab_tag_p tag)
     /* PCCC Command */
     pccc->pccc_command = AB_EIP_PCCC_TYPED_CMD;
     pccc->pccc_status = 0;  /* STS 0 in request */
-    pccc->pccc_seq_num = h2le16((uint16_t)(intptr_t)(tag->connection));
+    pccc->pccc_seq_num = h2le16((uint16_t)(intptr_t)(tag->plc));
     pccc->pccc_function = AB_EIP_PCCC_TYPED_WRITE_FUNC;
     pccc->pccc_transfer_size = h2le16(tag->elem_count); /* This is not in the docs, but it is in the data. */
 
@@ -384,7 +384,7 @@ int tag_write_start(ab_tag_p tag)
     req->request_size = data - (req->data);
 
     /* store the connection */
-    req->connection = tag->connection;
+//    req->connection = tag->connection;
 
     /* ready the request for sending */
     req->send_request = 1;
