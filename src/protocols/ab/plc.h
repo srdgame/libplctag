@@ -62,38 +62,38 @@
 #define SESSION_MAX_UNCONNECTED_REQUESTS_IN_FLIGHT (8)
 
 
-//uint64_t session_get_new_seq_id_unsafe(ab_session_p sess);
-uint64_t session_get_new_seq_id(ab_session_p sess);
+//uint64_t plc_get_new_seq_id_unsafe(ab_plc_p sess);
+uint64_t plc_get_new_seq_id(ab_plc_p sess);
 
-extern int session_find_or_create(ab_session_p *session, attr attribs);
-ab_connection_p session_find_connection_by_path_unsafe(ab_session_p session,const char *path);
-//extern int session_add_connection_unsafe(ab_session_p session, ab_connection_p connection);
-extern int session_add_connection(ab_session_p session, ab_connection_p connection);
-extern int session_remove_connection_unsafe(ab_session_p session, ab_connection_p connection);
-extern int session_remove_connection(ab_session_p session, ab_connection_p connection);
-//extern int session_add_request_unsafe(ab_session_p sess, ab_request_p req);
-extern int session_add_request(ab_session_p sess, ab_request_p req);
-//extern int session_remove_request_unsafe(ab_session_p sess, ab_request_p req);
-extern int session_remove_request(ab_session_p sess, ab_request_p req);
+extern int plc_find_or_create(ab_plc_p *session, attr attribs);
+ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p session,const char *path);
+//extern int plc_add_connection_unsafe(ab_plc_p session, ab_connection_p connection);
+extern int plc_add_connection(ab_plc_p session, ab_connection_p connection);
+extern int plc_remove_connection_unsafe(ab_plc_p session, ab_connection_p connection);
+extern int plc_remove_connection(ab_plc_p session, ab_connection_p connection);
+//extern int plc_add_request_unsafe(ab_plc_p sess, ab_request_p req);
+extern int plc_add_request(ab_plc_p sess, ab_request_p req);
+//extern int plc_remove_request_unsafe(ab_plc_p sess, ab_request_p req);
+extern int plc_remove_request(ab_plc_p sess, ab_request_p req);
 
-extern uint32_t session_get_new_connection_id(ab_session_p);
-//extern int session_status_unsafe(ab_session_p session);
+extern uint32_t plc_get_new_connection_id(ab_plc_p);
+//extern int plc_status_unsafe(ab_plc_p session);
 
 /* send/receive packets. */
-//extern int recv_eip_response_unsafe(ab_session_p session);
+//extern int recv_eip_response_unsafe(ab_plc_p session);
 //extern int send_eip_request_unsafe(ab_request_p req);
 
-extern int session_status(ab_session_p session);
+extern int plc_status(ab_plc_p session);
 
 
-extern int session_setup();
-extern void session_teardown();
+extern int plc_setup();
+extern void plc_teardown();
 
 /* 
  * FIXME - we use this too much.  Break down into
  * finer grained mutex use.
  */
-extern mutex_p global_session_mut;
+extern mutex_p global_plc_mut;
 
 
 #endif

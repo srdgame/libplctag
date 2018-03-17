@@ -35,7 +35,7 @@
 #include <ab/plc5_dhp.h>
 #include <ab/tag.h>
 #include <ab/connection.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/eip.h>
 #include <util/debug.h>
 #include <util/mem.h>
@@ -68,7 +68,7 @@ static int check_write_status(ab_tag_p tag);
 int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
-    int session_rc = PLCTAG_STATUS_OK;
+    int plc_rc = PLCTAG_STATUS_OK;
     int connection_rc = PLCTAG_STATUS_OK;
 
     if(tag->read_in_progress) {
@@ -85,10 +85,10 @@ int tag_status(ab_tag_p tag)
 
     /* propagate the status up. */
     if (tag->session) {
-        session_rc = session_status(tag->session);
+        plc_rc = plc_status(tag->session);
     } else {
         /* this is not OK.  This is fatal! */
-        session_rc = PLCTAG_ERR_CREATE;
+        plc_rc = PLCTAG_ERR_CREATE;
     }
 
     if(tag->needs_connection) {
@@ -103,7 +103,7 @@ int tag_status(ab_tag_p tag)
     }
 
     /* now collect the status.  Highest level wins. */
-    rc = session_rc;
+    rc = plc_rc;
 
     if(rc == PLCTAG_STATUS_OK) {
         rc = connection_rc;
@@ -224,7 +224,7 @@ int tag_read_start(ab_tag_p tag)
     req->send_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    rc = plc_add_request(tag->session, req);
 
     if(rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
@@ -393,7 +393,7 @@ int tag_write_start(ab_tag_p tag)
     req->connected_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    rc = plc_add_request(tag->session, req);
 
     if(rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);

@@ -40,7 +40,7 @@ extern "C"
 #include <lib/libplctag.h>
 #include <lib/tag.h>
 #include <ab/connection.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/tag.h>
 #include <ab/eip.h>
 #include <ab/ab.h>
@@ -59,7 +59,7 @@ struct ab_connection_t {
 
     char path[MAX_CONN_PATH];
 
-    ab_session_p session;
+    ab_plc_p session;
 
     uint32_t targ_connection_id; /* the ID the target uses for this connection. */
     uint32_t orig_connection_id; /* the ID we use for this connection */
@@ -133,7 +133,7 @@ uint16_t connection_next_seq(ab_connection_p connection)
  * Shared global data
  */
 
-//~ static ab_connection_p session_find_connection_by_path_unsafe(ab_session_p session,const char *path);
+//~ static ab_connection_p plc_find_connection_by_path_unsafe(ab_plc_p session,const char *path);
 static ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int shared);
 static int connection_perform_forward_open(ab_connection_p connection);
 static int send_forward_open_req(ab_connection_p connection, ab_request_p req);
@@ -173,9 +173,9 @@ int connection_find_or_create(ab_tag_p tag, attr attribs)
      * connection at the same time.
      */
 
-    critical_block(global_session_mut) {
+    critical_block(global_plc_mut) {
         if(shared_connection) {
-            connection = session_find_connection_by_path_unsafe(tag->session, path);
+            connection = plc_find_connection_by_path_unsafe(tag->session, path);
         } else {
             connection = AB_CONNECTION_NULL;
         }
@@ -266,7 +266,7 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
 
     connection->session = rc_inc(tag->session);
     connection->conn_seq_num = 1 /*(uint16_t)(intptr_t)(connection)*/;
-    connection->orig_connection_id = session_get_new_connection_id(connection->session);
+    connection->orig_connection_id = plc_get_new_connection_id(connection->session);
     connection->status = PLCTAG_STATUS_PENDING;
 //    connection->exclusive = !shared;
 
@@ -307,8 +307,8 @@ ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int sha
     /* add the connection to the session */
     /* FIXME - these could fail! */
     //connection->session = rc_inc(connection->session);
-    //session_add_connection_unsafe(connection->session, connection);
-    session_add_connection(connection->session, connection);
+    //plc_add_connection_unsafe(connection->session, connection);
+    plc_add_connection(connection->session, connection);
 
     pdebug(DEBUG_INFO, "Done.");
 
@@ -450,7 +450,7 @@ int send_forward_open_req(ab_connection_p connection, ab_request_p req)
     req->no_resend = 1; /* do not resend this, leads to problems.*/
 
     /* add the request to the session's list. */
-    rc = session_add_request(connection->session, req);
+    rc = plc_add_request(connection->session, req);
 
     pdebug(DEBUG_INFO, "Done");
 
@@ -527,7 +527,7 @@ void connection_cleanup(void *connection_arg)
      * a reference (and thus a ref count increment), then we have another
      * reference and thus cannot delete this connection yet.
      */
-    critical_block(global_session_mut) {
+    critical_block(global_plc_mut) {
 //        if(rc_count(connection) > 0) {
 //            pdebug(DEBUG_WARN,"Some other thread took a reference to this connection before we could delete it.  Aborting deletion.");
 //            really_destroy = 0;
@@ -535,7 +535,7 @@ void connection_cleanup(void *connection_arg)
 //        }
 
         /* make sure the session does not reference the connection */
-        session_remove_connection_unsafe(connection->session, connection);
+        plc_remove_connection_unsafe(connection->session, connection);
 
         /* now no one can get a reference to this connection. */
     }
@@ -678,7 +678,7 @@ int send_forward_close_req(ab_connection_p connection, ab_request_p req)
     req->connected_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(connection->session, req);
+    rc = plc_add_request(connection->session, req);
 
     pdebug(DEBUG_INFO, "Done");
 

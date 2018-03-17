@@ -37,8 +37,8 @@ typedef struct ab_tag_t *ab_tag_p;
 typedef struct ab_connection_t *ab_connection_p;
 #define AB_CONNECTION_NULL ((ab_connection_p)NULL)
 
-typedef struct ab_session_t *ab_session_p;
-#define AB_SESSION_NULL ((ab_session_p)NULL)
+typedef struct ab_plc_t *ab_plc_p;
+#define AB_SESSION_NULL ((ab_plc_p)NULL)
 
 typedef struct ab_request_t *ab_request_p;
 #define AB_REQUEST_NULL ((ab_request_p)NULL)

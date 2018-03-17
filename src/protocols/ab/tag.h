@@ -37,7 +37,7 @@
 #include <lib/libplctag.h>
 #include <lib/tag.h>
 #include <ab/ab_common.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/connection.h>
 #include <ab/request.h>
 
@@ -56,7 +56,7 @@ struct ab_tag_t {
     uint8_t dhp_dest;
 
     /* pointers back to session */
-    ab_session_p session;
+    ab_plc_p session;
     int needs_connection;
     ab_connection_p connection;
 

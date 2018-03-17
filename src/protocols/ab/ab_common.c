@@ -37,7 +37,7 @@
 #include <ab/micro800.h>
 #include <ab/plc5.h>
 #include <ab/plc5_dhp.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/connection.h>
 #include <ab/tag.h>
 #include <ab/request.h>
@@ -85,7 +85,7 @@ int ab_init(void)
     pdebug(DEBUG_INFO,"Initializing AB protocol library.");
 
     /* set up session IO thread etc. */
-    rc = session_setup();
+    rc = plc_setup();
 
     pdebug(DEBUG_INFO,"Finished initializing AB protocol library.");
 
@@ -99,7 +99,7 @@ void ab_teardown(void)
 {
     pdebug(DEBUG_INFO,"Releasing global AB protocol resources.");
 
-    session_teardown();
+    plc_teardown();
 }
     
 
@@ -273,7 +273,7 @@ plc_tag_p ab_tag_create(attr attribs)
      *
      * All tags need sessions.  They are the TCP connection to the gateway PLC.
      */
-    if(session_find_or_create(&tag->session, attribs) != PLCTAG_STATUS_OK) {
+    if(plc_find_or_create(&tag->session, attribs) != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_INFO,"Unable to create session!");
         tag->status = PLCTAG_ERR_BAD_GATEWAY;
         return (plc_tag_p)tag;
@@ -389,7 +389,7 @@ void tag_destroy(ab_tag_p tag)
 {
 //    int rc = PLCTAG_STATUS_OK;
     ab_connection_p connection = NULL;
-    ab_session_p session = NULL;
+    ab_plc_p session = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 

@@ -41,7 +41,7 @@
 #include <ab/ab_common.h>
 #include <ab/cip.h>
 #include <ab/tag.h>
-#include <ab/session.h>
+#include <ab/plc.h>
 #include <ab/logix.h>
 #include <ab/error_codes.h>
 #include <util/attr.h>
@@ -86,7 +86,7 @@ static int calculate_write_sizes(ab_tag_p tag);
 int tag_status(ab_tag_p tag)
 {
     int rc = PLCTAG_STATUS_OK;
-    int session_rc = PLCTAG_STATUS_OK;
+    int plc_rc = PLCTAG_STATUS_OK;
     int connection_rc = PLCTAG_STATUS_OK;
 
     if (tag->read_in_progress) {
@@ -137,10 +137,10 @@ int tag_status(ab_tag_p tag)
      *   N1         N2      N3        N1
      */
     if (tag->session) {
-        session_rc = session_status(tag->session);
+        plc_rc = plc_status(tag->session);
     } else {
         /* this is not OK.  This is fatal! */
-        session_rc = PLCTAG_ERR_CREATE;
+        plc_rc = PLCTAG_ERR_CREATE;
     }
 
     if(tag->needs_connection) {
@@ -155,7 +155,7 @@ int tag_status(ab_tag_p tag)
     }
 
     /* now collect the status.  Highest level wins. */
-    rc = session_rc;
+    rc = plc_rc;
 
     if(rc == PLCTAG_STATUS_OK) {
         rc = connection_rc;
@@ -515,7 +515,7 @@ int build_read_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->connected_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    rc = plc_add_request(tag->session, req);
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
@@ -644,7 +644,7 @@ int build_read_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
     req->send_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    rc = plc_add_request(tag->session, req);
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
@@ -770,7 +770,7 @@ int build_write_request_connected(ab_tag_p tag, int slot, int byte_offset)
     req->connected_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    rc = plc_add_request(tag->session, req);
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
@@ -923,7 +923,7 @@ int build_write_request_unconnected(ab_tag_p tag, int slot, int byte_offset)
     req->send_request = 1;
 
     /* add the request to the session's list. */
-    rc = session_add_request(tag->session, req);
+    rc = plc_add_request(tag->session, req);
 
     if (rc != PLCTAG_STATUS_OK) {
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
