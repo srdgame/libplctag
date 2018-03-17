@@ -155,22 +155,22 @@ uint64_t session_get_new_seq_id(ab_session_p sess)
 }
 
 
-static int connection_is_usable_unsafe(ab_connection_p connection)
-{
-    if(!connection) {
-        return 0;
-    }
-
-//    if(connection->exclusive) {
+//static int connection_is_usable_unsafe(ab_connection_p connection)
+//{
+//    if(!connection) {
 //        return 0;
 //    }
 //
-//    if(connection->disconnect_in_progress) {
-//        return 0;
-//    }
-
-    return 1;
-}
+////    if(connection->exclusive) {
+////        return 0;
+////    }
+////
+////    if(connection->disconnect_in_progress) {
+////        return 0;
+////    }
+//
+//    return 1;
+//}
 
 
 

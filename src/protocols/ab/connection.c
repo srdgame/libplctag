@@ -254,6 +254,8 @@ int connection_release(ab_connection_p connection)
 ab_connection_p connection_create_unsafe(const char* path, ab_tag_p tag, int shared)
 {
     ab_connection_p connection = rc_alloc(sizeof(struct ab_connection_t), connection_cleanup);
+    
+    (void)shared;
 
     pdebug(DEBUG_INFO, "Starting.");
 

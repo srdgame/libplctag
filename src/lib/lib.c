@@ -216,7 +216,7 @@ LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
 
     if(!tag_constructor) {
         pdebug(DEBUG_WARN,"Tag creation failed, no tag constructor found for tag type!");
-        attr_destroy(attribs);
+        rc_dec(attribs);
         return PLC_TAG_NULL;
     }
 
@@ -228,27 +228,24 @@ LIB_EXPORT plc_tag plc_tag_create(const char *attrib_str, int timeout)
      */
     if(!tag) {
         pdebug(DEBUG_WARN, "Tag creation failed, skipping mutex creation and other generic setup.");
-        attr_destroy(attribs);
+        rc_dec(attribs);
         return PLC_TAG_NULL;
     }
 
-    if(rc != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_ERROR, "Unable to create tag mutex!");
-
-        /* this is fatal! */
-        attr_destroy(attribs);
-        rc_dec(tag);
-    }
-
+//    if(rc != PLCTAG_STATUS_OK) {
+//        pdebug(DEBUG_ERROR, "Unable to create tag mutex!");
+//
+//        /* this is fatal! */
+//        rc_dec(attribs);
+//        rc_dec(tag);
+//        
+//        return PLC_TAG_NULL;
+//    }
+//
     /*
-     * Release memory for attributes
-     *
-     * some code is commented out that would have kept a pointer
-     * to the attributes in the tag and released the memory upon
-     * tag destruction. To prevent a memory leak without maintaining
-     * that pointer, the memory needs to be released here.
+     * This part of the code is done with the attributes.   
      */
-    attr_destroy(attribs);
+    rc_dec(attribs);
 
     /* map the tag to a tag ID */
     tag_id = liveobj_add((liveobj_p)tag, LIVEOBJ_TYPE_TAG, tag_handler_wrapper_func);
