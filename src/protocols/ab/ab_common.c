@@ -106,13 +106,26 @@ void ab_teardown(void)
 
 plc_tag_p ab_tag_create(attr attribs)
 {
-    ab_tag_p tag = AB_TAG_NULL;
+    ab_tag_p tag = NULL;
+    ab_plc_p plc = NULL;
     const char *path;
     int num_retries;
     int default_retry_interval;
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO,"Starting.");
+
+    /*
+     * Find or create a PLC.
+     *
+     * All tags need PLCs.
+     */
+    if((rc = plc_find_or_create(&plc, attribs)) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_INFO,"Unable to create PLC object! rc=%d", rc);
+        return NULL;
+    }
+
+    pdebug(DEBUG_DETAIL, "using PLC=%p", plc);
 
     /*
      * allocate memory for the new tag.  Do this first so that
@@ -123,8 +136,12 @@ plc_tag_p ab_tag_create(attr attribs)
 
     if(!tag) {
         pdebug(DEBUG_ERROR,"Unable to allocate memory for AB EIP tag!");
+        rc_dec(plc);
         return NULL;
     }
+    
+    /* now assign the PLC */
+    tag->plc = plc;
 
     pdebug(DEBUG_DETAIL, "tag=%p", tag);
     
@@ -267,19 +284,6 @@ plc_tag_p ab_tag_create(attr attribs)
 
     tag->default_retry_interval = attr_get_int(attribs,"default_retry_interval", default_retry_interval);
     tag->num_retries = attr_get_int(attribs, "num_retries", num_retries);
-
-    /*
-     * Find or create a PLC.
-     *
-     * All tags need PLCs.
-     */
-    if(plc_find_or_create(&tag->plc, attribs) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to create PLC object!");
-        tag->status = PLCTAG_ERR_BAD_GATEWAY;
-        return (plc_tag_p)tag;
-    }
-
-    pdebug(DEBUG_DETAIL, "using PLC=%p", tag->plc);
 
     if(tag->needs_connection) {
         /* Find or create a connection.*/
