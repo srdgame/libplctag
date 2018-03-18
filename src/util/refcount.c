@@ -37,6 +37,8 @@ struct rc {
     int strong_count;
     int weak_count;
     lock_t lock;
+    char *creating_function;
+    int line_number;
     rc_cleanup_func cleanup_func;
 };
 
@@ -55,16 +57,17 @@ struct rc {
  */
 
 
-void *rc_alloc(int size, rc_cleanup_func cleanup_func)
+//void *rc_alloc(int size, rc_cleanup_func cleanup_func)
+rc_ptr rc_alloc_impl(const char *function_name, int line, int size, rc_cleanup_func cleanup_func)
 {
-    int total_size = size + RC_HEADER_SIZE;  /* allocate a 32-byte chunk to align the "real" data. */
+    int name_size = str_length(function_name);
+    int total_size = RC_HEADER_SIZE + size + name_size + 1;  /* allocate a 32-byte chunk to align the "real" data. */
     struct rc *rc = mem_alloc(total_size);
 
-    pdebug(DEBUG_DETAIL,"Allocating %d byte from a request of %d with result pointer %p",total_size, size, rc);
+    pdebug(DEBUG_DETAIL,"Allocating %d bytes at %s:%d with result pointer %p",size, function_name, line, DATA_FROM_HEADER(rc));
 
     if(!rc) {
         pdebug(DEBUG_WARN,"Unable to allocate sufficient memory!");
-        
         return NULL;
     }
     
@@ -72,7 +75,12 @@ void *rc_alloc(int size, rc_cleanup_func cleanup_func)
     rc->weak_count = 0;
     rc->lock = LOCK_INIT;
     rc->cleanup_func = cleanup_func;
-        
+    rc->line_number = line;
+    
+    /* copy the function name */
+    rc->creating_function = (char*)((uint8_t*)(rc) + RC_HEADER_SIZE + size);
+    str_copy(rc->creating_function, name_size, function_name);
+    
     /* return the address _past_ the rc struct. */
     return DATA_FROM_HEADER(rc);
 }
@@ -118,7 +126,7 @@ void *rc_inc(void *data)
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak)", data, strong_count, weak_count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak) on object allocated at %s:%d.", data, strong_count, weak_count, rc->creating_function, rc->line_number);
 
     return (void *)(strong_count == 0 ? NULL : data);
 }
@@ -135,7 +143,8 @@ void *rc_inc(void *data)
  * and the block itself using rc_free();
  */
 
-void *rc_dec(void *data)
+//void *rc_dec(void *data)
+rc_ptr rc_dec_impl(const char *function_name, int line, rc_ptr data)
 {
     struct rc *rc = NULL;
     int strong_count = 0;
@@ -162,7 +171,7 @@ void *rc_dec(void *data)
     if(rc->strong_count > 0) {
         rc->strong_count--;
     } else {
-        pdebug(DEBUG_WARN,"rc_dec() called on object that was already deleted!");
+        pdebug(DEBUG_WARN,"rc_dec() called from %s:%d on object that was already deleted!",function_name,line);
     }
 
     /* total count is what matters. */
@@ -172,10 +181,10 @@ void *rc_dec(void *data)
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak)", data, strong_count, weak_count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak) on object allocated at %s:%d.", data, strong_count, weak_count, rc->creating_function, rc->line_number);
 
     if((strong_count + weak_count) <= 0) {
-        pdebug(DEBUG_DETAIL,"Calling cleanup function.");
+        pdebug(DEBUG_DETAIL,"Calling cleanup function at %s:%d on object allocated at %s:%d.", function_name, line, rc->creating_function, rc->line_number);
 
         rc->cleanup_func(data);
                 
@@ -233,7 +242,7 @@ void *rc_weak_inc(void *data)
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak)", data, strong_count, weak_count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak) on object allocated at %s:%d.", data, strong_count, weak_count, rc->creating_function, rc->line_number);
 
     return (void *)(strong_count == 0 ? NULL : data);
 }
@@ -246,7 +255,8 @@ void *rc_weak_inc(void *data)
  * my_struct->some_field = rc_weak_dec(rc_obj);
  */
 
-void *rc_weak_dec(void *data)
+//void *rc_weak_dec(void *data)
+rc_ptr rc_weak_dec_impl(const char *function_name, int line, rc_ptr data)
 {
     struct rc *rc = NULL;
     int strong_count = 0;
@@ -273,7 +283,7 @@ void *rc_weak_dec(void *data)
     if(rc->weak_count > 0) {
         rc->weak_count--;
     } else {
-        pdebug(DEBUG_WARN,"rc_weak_dec() called on object that was already deleted!");
+        pdebug(DEBUG_WARN,"rc_dec() called from %s:%d on object that was already deleted!",function_name,line);
     }
 
     /* total count is what matters. */
@@ -283,13 +293,13 @@ void *rc_weak_dec(void *data)
     /* release the lock so that other things can get to it. */
     lock_release(&rc->lock);
 
-    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong),  %d (weak)", data, strong_count, weak_count);
+    pdebug(DEBUG_SPEW,"Refcount on %p is now %d (strong), %d (weak) on object allocated at %s:%d.", data, strong_count, weak_count, rc->creating_function, rc->line_number);
 
     if((strong_count + weak_count) <= 0) {
-        pdebug(DEBUG_DETAIL,"Calling cleanup function.");
+        pdebug(DEBUG_DETAIL,"Calling cleanup function at %s:%d on object allocated at %s:%d.", function_name, line, rc->creating_function, rc->line_number);
 
         rc->cleanup_func(data);
-        
+                
         /* all done, free the memory for the object itself. */
         mem_free(rc);
     }

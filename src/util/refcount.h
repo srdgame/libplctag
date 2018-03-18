@@ -26,8 +26,15 @@
 typedef void *rc_ptr;
 typedef void (*rc_cleanup_func)(rc_ptr arg);
 
-extern rc_ptr rc_alloc(int size, rc_cleanup_func cleanup_func);
+#define rc_alloc(size, cleanup_func) rc_alloc_impl(__func__, __LINE__, size, cleanup_func)
+extern rc_ptr rc_alloc_impl(const char *function_name, int line, int size, rc_cleanup_func cleanup_func);
+
 extern rc_ptr rc_inc(rc_ptr data);
-extern rc_ptr rc_dec(rc_ptr data);
+
+#define rc_dec(data) rc_dec_impl(__func__, __LINE__, data)
+extern rc_ptr rc_dec_impl(const char *function_name, int line, rc_ptr data);
+
 extern rc_ptr rc_weak_inc(rc_ptr data);
-extern rc_ptr rc_weak_dec(rc_ptr data);
+
+#define rc_weak_dec(data) rc_weak_dec_impl(__func__, __LINE__, data)
+extern rc_ptr rc_weak_dec_impl(const char *function_name, int line, rc_ptr data);
