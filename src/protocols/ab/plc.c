@@ -1688,6 +1688,8 @@ int ok_to_resend(ab_plc_p plc, ab_request_p request)
     if(!plc) {
         return 0;
     }
+    
+    return 0;
 
     if(!request) {
         return 0;
