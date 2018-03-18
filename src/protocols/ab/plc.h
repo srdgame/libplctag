@@ -34,8 +34,6 @@
 #include <util/refcount.h>
 
 
-typedef enum { AB_PLC_TYPE_PLC=1, AB_PLC_TYPE_PLC_DHP, AB_PLC_TYPE_MLGX, AB_PLC_TYPE_LGX, AB_PLC_TYPE_MLGX800 } plc_type_t;
-
 
 #define MAX_SESSION_HOST    (128)
 
