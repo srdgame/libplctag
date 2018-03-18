@@ -72,6 +72,7 @@ struct ab_plc_t {
     uint64_t session_seq_id;
     
     /* connection info */
+    int needs_connection;
     uint8_t *conn_path;
     uint8_t conn_path_size;
     uint16_t conn_params;
@@ -547,22 +548,27 @@ ab_plc_p plc_create_unsafe(attr attribs)
     switch(plc->plc_type) {
         case AB_PLC_TYPE_PLC:
             plc->conn_params = AB_EIP_PLC5_PARAM;
+            plc->needs_connection = 0;
             break;
             
         case AB_PLC_TYPE_PLC_DHP:
             plc->conn_params = AB_EIP_PLC5_PARAM;
+            plc->needs_connection = 1;
             break;
             
         case AB_PLC_TYPE_MLGX800:
             plc->conn_params = AB_EIP_LGX_PARAM;
+            plc->needs_connection = 1;
             break;
             
         case AB_PLC_TYPE_MLGX:
             plc->conn_params = AB_EIP_PLC5_PARAM;
+            plc->needs_connection = 0;
             break;
             
         case AB_PLC_TYPE_LGX:
             plc->conn_params = AB_EIP_LGX_PARAM;
+            plc->needs_connection = 1;
             break;
             
         default:
@@ -664,9 +670,11 @@ THREAD_FUNC(plc_init)
             break;
         }
         
-        if((rc = connection_open(plc)) != PLCTAG_STATUS_OK) {
-            pdebug(DEBUG_WARN, "Unable to open CIP connection to PLC!");
-            break;
+        if(plc->needs_connection) {
+            if((rc = connection_open(plc)) != PLCTAG_STATUS_OK) {
+                pdebug(DEBUG_WARN, "Unable to open CIP connection to PLC!");
+                break;
+            }
         }
 
         plc->registered = 1;
