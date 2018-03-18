@@ -64,7 +64,7 @@ struct ab_request_t {
     //refcount rc;
 
     ab_plc_p plc;
-    ab_connection_p connection;
+//    ab_connection_p connection;
 
     uint64_t session_seq_id;
     uint32_t conn_id;
