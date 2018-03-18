@@ -258,7 +258,7 @@ int cip_encode_path(const char *path, uint8_t **conn_path, uint8_t *conn_path_si
         ioi_size++;
         buffer[ioi_size] = 0x01;
         ioi_size++;
-        ioi_size += 6;
+        //ioi_size += 6;
 
 //        tag->dhp_src  = src_addr;
 //        tag->dhp_dest = dest_addr;
@@ -279,7 +279,7 @@ int cip_encode_path(const char *path, uint8_t **conn_path, uint8_t *conn_path_si
             buffer[ioi_size] = 0x24;   /* instance */
             ioi_size++;
             buffer[ioi_size] = 0x01;   /* message router class instance #1 */
-            ioi_size += 4;
+            ioi_size++;
             
             *use_dhp = 0;
         }
