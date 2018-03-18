@@ -470,7 +470,7 @@ void tag_destroy(ab_tag_p tag)
 
 
 
-int check_cpu(/*ab_tag_p tag, */attr attribs)
+plc_type_t check_cpu(/*ab_tag_p tag, */attr attribs)
 {
     const char* plc_type = attr_get_str(attribs, "plc", attr_get_str(attribs, "cpu", "NONE"));
 
@@ -491,7 +491,7 @@ int check_cpu(/*ab_tag_p tag, */attr attribs)
         
     pdebug(DEBUG_WARN, "Unsupported device type: %s", plc_type);
 
-    return PLCTAG_ERR_BAD_DEVICE;
+    return AB_PLC_TYPE_NONE;
 }
 
 int check_tag_name(ab_tag_p tag, const char* name)
