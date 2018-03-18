@@ -115,13 +115,6 @@ plc_tag_p ab_tag_create(attr attribs)
 
     pdebug(DEBUG_INFO,"Starting.");
     
-    /* Find out if this is a supported PLC first. */
-    rc = plc_find_or_create(&plc, attribs);
-    if(!plc) {
-        pdebug(DEBUG_WARN, "Unsupported AB PLC type!");
-        return NULL;
-    }
-
     /*
      * Find or create a PLC.
      *
