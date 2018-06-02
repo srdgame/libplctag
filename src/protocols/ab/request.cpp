@@ -98,7 +98,7 @@ int request_release(ab_request_p req)
 //int request_destroy_unsafe(ab_request_p* req_pp)
 void request_destroy(void *req_arg)
 {
-    ab_request_p r = req_arg;
+    ab_request_p r = static_cast<ab_request_p>(req_arg);
 
     pdebug(DEBUG_DETAIL, "Starting.");
 

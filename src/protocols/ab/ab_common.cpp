@@ -72,10 +72,26 @@ volatile int library_terminating = 0;
 
 
 /* vtables for different kinds of tags */
-struct tag_vtable_t default_vtable = {0}/*= { NULL, ab_tag_destroy, NULL, NULL }*/;
-struct tag_vtable_t cip_vtable = {0}/*= { ab_tag_abort, ab_tag_destroy, eip_cip_tag_read_start, eip_cip_tag_status, eip_cip_tag_write_start }*/;
-struct tag_vtable_t plc_vtable = {0}/*= { ab_tag_abort, ab_tag_destroy, eip_pccc_tag_read_start, eip_pccc_tag_status, eip_pccc_tag_write_start }*/;
-struct tag_vtable_t plc_dhp_vtable = {0}/*= { ab_tag_abort, ab_tag_destroy, eip_dhp_pccc_tag_read_start, eip_dhp_pccc_tag_status, eip_dhp_pccc_tag_write_start}*/;
+struct tag_vtable_t default_vtable = {0,                                                /* abort */
+                                      (tag_vtable_func)(ab_tag_destroy),     /* destroy */
+                                      0,                                                /* read */
+                                      0,                                                /* status */
+                                      0};                                               /* write */
+struct tag_vtable_t cip_vtable = {  (tag_vtable_func)ab_tag_abort, 
+                                    (tag_vtable_func)ab_tag_destroy, 
+                                    (tag_vtable_func)eip_cip_tag_read_start, 
+                                    (tag_vtable_func)eip_cip_tag_status, 
+                                    (tag_vtable_func)eip_cip_tag_write_start };
+struct tag_vtable_t plc_vtable = {  (tag_vtable_func)ab_tag_abort, 
+                                    (tag_vtable_func)ab_tag_destroy, 
+                                    (tag_vtable_func)eip_pccc_tag_read_start, 
+                                    (tag_vtable_func)eip_pccc_tag_status, 
+                                    (tag_vtable_func)eip_pccc_tag_write_start };
+struct tag_vtable_t plc_dhp_vtable = {  (tag_vtable_func)ab_tag_abort, 
+                                        (tag_vtable_func)ab_tag_destroy, 
+                                        (tag_vtable_func)eip_dhp_pccc_tag_read_start, 
+                                        (tag_vtable_func)eip_dhp_pccc_tag_status, 
+                                        (tag_vtable_func)eip_dhp_pccc_tag_write_start};
 
 
 /* forward declarations*/

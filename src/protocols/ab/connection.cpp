@@ -430,7 +430,7 @@ int recv_forward_open_resp(ab_connection_p connection, ab_request_p req)
 
 void connection_destroy(void *connection_arg)
 {
-    ab_connection_p connection = connection_arg;
+    ab_connection_p connection = static_cast<ab_connection_p>(connection_arg);
     int really_destroy = 1;
 
     pdebug(DEBUG_INFO, "Starting.");

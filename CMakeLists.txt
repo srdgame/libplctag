@@ -35,17 +35,17 @@ set (libplctag_VERSION_PATCH 9)
 set (VERSION "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}.${libplctag_VERSION_PATCH}")
 
 
-message("MSVC = ${MSVC}")
-if(MSVC)
-    message("CMAKE generator: ${CMAKE_GENERATOR}")
-    message("CMAKE generator version: ${MSVC_VERSION}")
-
-    if(${MSVC_VERSION} EQUAL 1800)
-        set(COMPILE_AS_C 0)
-    else()
-        set(COMPILE_AS_C 1)
-    endif()
-endif()
+#message("MSVC = ${MSVC}")
+#if(MSVC)
+#    message("CMAKE generator: ${CMAKE_GENERATOR}")
+#    message("CMAKE generator version: ${MSVC_VERSION}")
+#
+#    if(${MSVC_VERSION} EQUAL 1800)
+#        set(COMPILE_AS_C 0)
+#    else()
+#        set(COMPILE_AS_C 1)
+#    endif()
+#endif()
 
 
 
@@ -99,69 +99,70 @@ endif()
 
 MESSAGE("BASE_FLAGS=${BASE_FLAGS}")
 
-if (CMAKE_C_COMPILER_ID STREQUAL "MSVC")
-    # MSVC 2012 can compile the library as C++, but not C
-    if(COMPILE_AS_C)
-        message("MSVC can handle C99, compiling code as C")
-        set(BASE_C_FLAGS "${BASE_FLAGS} /c")
-    else()
-        message("MSVC cannot handle C99, compiling code as C++")
-        set(BASE_C_FLAGS "${BASE_FLAGS}")
-    endif()
-else()
-    set(BASE_C_FLAGS "${BASE_FLAGS} -std=c99")
-endif()
+#if (CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+#    # MSVC 2012 can compile the library as C++, but not C
+#    if(COMPILE_AS_C)
+#        message("MSVC can handle C99, compiling code as C")
+#        set(BASE_C_FLAGS "${BASE_FLAGS} /c")
+#    else()
+#        message("MSVC cannot handle C99, compiling code as C++")
+#        set(BASE_C_FLAGS "${BASE_FLAGS}")
+#    endif()
+#else()
+#    set(BASE_C_FLAGS "${BASE_FLAGS} -std=c99")
+#endif()
 
+set(BASE_C_FLAGS "${BASE_FLAGS}")
 set(BASE_CXX_FLAGS "${BASE_FLAGS}")
 
 MESSAGE("BASE_C_FLAGS=${BASE_C_FLAGS}")
 MESSAGE("BASE_CXX_FLAGS=${BASE_CXX_FLAGS}")
 
 # set up the library sources
-set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
+set ( libplctag_SRCS "${lib_SRC_PATH}/init.cpp"
                      "${lib_SRC_PATH}/init.h"
                      "${lib_SRC_PATH}/libplctag.h"
-                     "${lib_SRC_PATH}/libplctag_tag.c"
+                     "${lib_SRC_PATH}/libplctag_tag.cpp"
                      "${lib_SRC_PATH}/libplctag_tag.h"
                      "${ab_SRC_PATH}/ab.h"
-                     "${ab_SRC_PATH}/ab_common.c"
+                     "${ab_SRC_PATH}/ab_common.cpp"
                      "${ab_SRC_PATH}/ab_common.h"
-                     "${ab_SRC_PATH}/cip.c"
+                     "${ab_SRC_PATH}/cip.cpp"
                      "${ab_SRC_PATH}/cip.h"
-                     "${ab_SRC_PATH}/connection.c"
+                     "${ab_SRC_PATH}/connection.cpp"
                      "${ab_SRC_PATH}/connection.h"
-                     "${ab_SRC_PATH}/eip.c"
+                     "${ab_SRC_PATH}/eip.cpp"
                      "${ab_SRC_PATH}/eip.h"
-                     "${ab_SRC_PATH}/eip_cip.c"
+                     "${ab_SRC_PATH}/eip_cip.cpp"
                      "${ab_SRC_PATH}/eip_cip.h"
-                     "${ab_SRC_PATH}/eip_dhp_pccc.c"
+                     "${ab_SRC_PATH}/eip_dhp_pccc.cpp"
                      "${ab_SRC_PATH}/eip_dhp_pccc.h"
-                     "${ab_SRC_PATH}/eip_pccc.c"
+                     "${ab_SRC_PATH}/eip_pccc.cpp"
                      "${ab_SRC_PATH}/eip_pccc.h"
-                     "${ab_SRC_PATH}/error_codes.c"
+                     "${ab_SRC_PATH}/error_codes.cpp"
                      "${ab_SRC_PATH}/error_codes.h"
-                     "${ab_SRC_PATH}/pccc.c"
+                     "${ab_SRC_PATH}/pccc.cpp"
                      "${ab_SRC_PATH}/pccc.h"
-                     "${ab_SRC_PATH}/request.c"
+                     "${ab_SRC_PATH}/request.cpp"
                      "${ab_SRC_PATH}/request.h"
-                     "${ab_SRC_PATH}/session.c"
+                     "${ab_SRC_PATH}/session.cpp"
                      "${ab_SRC_PATH}/session.h"
                      "${ab_SRC_PATH}/tag.h"
-                     "${protocol_SRC_PATH}/system/system.c"
+                     "${protocol_SRC_PATH}/system/system.cpp"
                      "${protocol_SRC_PATH}/system/system.h"
                      "${protocol_SRC_PATH}/system/tag.h"
-                     "${util_SRC_PATH}/attr.c"
+                     "${util_SRC_PATH}/attr.cpp"
                      "${util_SRC_PATH}/attr.h"
-                     "${util_SRC_PATH}/debug.c"
+                     "${util_SRC_PATH}/debug.cpp"
                      "${util_SRC_PATH}/debug.h"
-                     "${util_SRC_PATH}/refcount.c"
+                     "${util_SRC_PATH}/refcount.cpp"
                      "${util_SRC_PATH}/refcount.h"
-                     "${platform_SRC_PATH}/platform.c"
+                     "${platform_SRC_PATH}/platform.cpp"
                      "${platform_SRC_PATH}/platform.h" )
 
 # set the compiler flags
 FOREACH( lib_src ${libplctag_SRCS} )
-    set_source_files_properties(${lib_src} PROPERTIES COMPILE_FLAGS ${BASE_C_FLAGS})
+    set_source_files_properties(${lib_src} PROPERTIES COMPILE_FLAGS ${BASE_CXX_FLAGS})
 ENDFOREACH()
 
 # set up the library

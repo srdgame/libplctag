@@ -282,7 +282,7 @@ extern char **str_split(const char *str, const char *sep)
     size = sizeof(char *)*(sub_str_count+1)+str_length(str)+1;
 
     /* allocate enough memory */
-    res = mem_alloc(size);
+    res = static_cast<char**>(mem_alloc(size));
 
     if(!res)
         return NULL;

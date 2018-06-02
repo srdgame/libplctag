@@ -557,7 +557,7 @@ int session_connect(ab_session_p session)
 /* must have the session mutex held here */
 void session_destroy(void *session_arg)
 {
-    ab_session_p session = session_arg;
+    ab_session_p session = static_cast<ab_session_p>(session_arg);
     int really_destroy = 1;
 
     pdebug(DEBUG_INFO, "Starting.");
