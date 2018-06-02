@@ -28,6 +28,8 @@
 #ifndef __DEBUG_H__
 #define __DEBUG_H__
 
+#include <inttypes.h>
+
 #define DEBUG_NONE      (0)
 #define DEBUG_ERROR     (1)
 #define DEBUG_WARN      (2)

@@ -155,7 +155,7 @@ LIB_EXPORT const char* plc_tag_decode_error(int rc)
         case PLCTAG_ERR_NULL_PTR: return "PLCTAG_ERR_NULL_PTR"; break;
         case PLCTAG_ERR_OUT_OF_BOUNDS: return "PLCTAG_ERR_OUT_OF_BOUNDS"; break;
         case PLCTAG_ERR_NO_MEM: return "PLCTAG_ERR_NO_MEM"; break;
-        case PLCTAG_ERR_LL_ADD: return "PLCTAG_ERR_LL_ADD"; break;
+        case PLCTAG_ERR_NO_RESOURCES: return "PLCTAG_ERR_NO_RESOURCES"; break;
         case PLCTAG_ERR_BAD_PARAM: return "PLCTAG_ERR_BAD_PARAM"; break;
         case PLCTAG_ERR_CREATE: return "PLCTAG_ERR_CREATE"; break;
         case PLCTAG_ERR_NOT_EMPTY: return "PLCTAG_ERR_NOT_EMPTY"; break;

@@ -75,7 +75,7 @@ extern "C" {
     #define PLCTAG_ERR_NULL_PTR         (-1)
     #define PLCTAG_ERR_OUT_OF_BOUNDS    (-2)
     #define PLCTAG_ERR_NO_MEM           (-3)
-    #define PLCTAG_ERR_LL_ADD           (-4)
+    #define PLCTAG_ERR_NO_RESOURCES     (-4)
     #define PLCTAG_ERR_BAD_PARAM        (-5)
     #define PLCTAG_ERR_CREATE           (-6)
     #define PLCTAG_ERR_NOT_EMPTY        (-7)
