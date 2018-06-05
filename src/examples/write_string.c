@@ -37,37 +37,11 @@
 #define STRING_DATA_SIZE (82)
 #define ELEM_COUNT 1
 #define ELEM_SIZE 88
-#define DATA_TIMEOUT 5000
+#define DATA_TIMEOUT 1000
 
 
 
-plc_tag create_tag(const char *path)
-{
-    plc_tag tag = PLC_TAG_NULL;
-
-    tag = plc_tag_create(path);
-
-    if(!tag) {
-        fprintf(stdout, "Error creating tag!\n");
-        return PLC_TAG_NULL;
-    }
-
-    /* let the connect succeed we hope */
-    while(plc_tag_status(tag) == PLCTAG_STATUS_PENDING) {
-        sleep_ms(100);
-    }
-
-    if(plc_tag_status(tag) != PLCTAG_STATUS_OK) {
-        fprintf(stdout,"Error setting up tag internal state.\n");
-        return PLC_TAG_NULL;
-    }
-
-    return tag;
-}
-
-
-
-int dump_strings(plc_tag tag)
+int dump_strings(tag_id tag)
 {
     char str_data[STRING_DATA_SIZE];
     int str_index;
@@ -99,7 +73,7 @@ int dump_strings(plc_tag tag)
 
 
 
-void update_string(plc_tag tag, int i, char *str)
+void update_string(tag_id tag, int i, char *str)
 {
     int str_len;
     int base_offset = i * ELEM_SIZE;
@@ -128,11 +102,11 @@ int main()
 {
     int i;
     char str[STRING_DATA_SIZE] = {0};
-    plc_tag tag = create_tag(TAG_PATH);
+    tag_id tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
     int rc;
 
-    if(!tag) {
-        fprintf(stdout,"ERROR: Unable to create tag!\n");
+    if(tag < 0) {
+        fprintf(stdout,"ERROR: Unable to create tag! error %s\n", plc_tag_decode_error(tag));
         return 0;
     }
 

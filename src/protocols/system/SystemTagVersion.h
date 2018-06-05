@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2017 by Kyle Hayes                                      *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -18,26 +18,26 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#ifndef __PROTOCOL_SYSTEM_TAG_H__
-#define __PROTOCOL_SYSTEM_TAG_H__ 1
+#pragma once
 
+#include <inttypes.h>
+#include <lib/libplctag.h>
+#include <lib/Tag.h>
+#include <system/SystemTag.h>
 #include <util/attr.h>
 #include <util/debug.h>
-#include <platform.h>
-#include <lib/libplctag_tag.h>
 
-#define MAX_SYSTEM_TAG_NAME (20)
-#define MAX_SYSTEM_TAG_SIZE (30)
+class SystemTagVersion : public SystemTag
+{
+public:
+    // tag operation methods to override
+    virtual int read();
 
-struct system_tag_t {
-    /*struct plc_tag_t p_tag;*/
-    TAG_BASE_STRUCT;
-
-    char name[MAX_SYSTEM_TAG_NAME];
-    uint8_t backing_data[MAX_SYSTEM_TAG_SIZE];
+    // tag data methods to override
+    virtual int getSize();
+    virtual int getInt(int offset, int bytes, uint64_t *result);
+    
+protected:
+    int32_t versionArray[3] = {0,0,0};
 };
 
-typedef struct system_tag_t *system_tag_p;
-
-
-#endif

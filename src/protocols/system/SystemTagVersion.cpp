@@ -18,41 +18,49 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#pragma once
+#include <lib/libplctag.h>
+#include <system/SystemTagVersion.h>
+#include <platform.h>
+#include <util/attr.h>
+#include <util/debug.h>
 
-#include <mutex>
-#include <util/RcObject.h>
 
-class Tag : public RcObject {
-public:
-    static const char* VERSION_STR;
-    static const int32_t VERSION_ARRAY[3];
-
-    static int addTag(Tag *tag);
-    static int removeTag(int id);
-    static ref<Tag> getTag(int id);
+int SystemTagVersion::read()
+{
+    this->versionArray[0] = Tag::VERSION_ARRAY[0];
+    this->versionArray[1] = Tag::VERSION_ARRAY[1];
+    this->versionArray[2] = Tag::VERSION_ARRAY[2];
     
-    // generic
-    void lock();
-    void unlock();
-    
-    // subclass responsibility below.
-    
-    // tag operation methods
-    virtual int abort();
-    virtual int read();
-    virtual int write();
-    virtual int status();
+    return PLCTAG_STATUS_OK;
+}
 
-    // tag data methods
-    virtual int getSize();
-    virtual int getInt(int offset, int bytes, uint64_t *result);
-    virtual int setInt(int offset, int bytes, uint64_t value);
-    virtual int getFloat(int offset, int bytes, double *result);
-    virtual int setFloat(int offset, int bytes, double value);
 
-    std::mutex apiMutex;
+int SystemTagVersion::getSize()
+{
+    return sizeof(this->versionArray);
+}
+
+
+int SystemTagVersion::getInt(int offset, int bytes, uint64_t *result)
+{
+    if(offset != 0 && offset != 4 && offset != 8) {
+        pdebug(DEBUG_WARN,"Only offsets of 0, 4 and 8 bytes are supported.");
+        return PLCTAG_ERR_UNSUPPORTED;
+    }
     
-protected:
-    int id = PLCTAG_ERR_NOT_FOUND;
-};
+    if(bytes != 4) {
+        pdebug(DEBUG_WARN,"Only integers of size 4 bytes are supported.");
+        return PLCTAG_ERR_UNSUPPORTED;
+    }
+    
+    if(result == nullptr) {
+        return PLCTAG_ERR_NULL_PTR;
+    }
+    
+    pdebug(DEBUG_DETAIL,"getting version array element %d with value %d",(offset/4),this->versionArray[offset/4]);
+    
+    *result = static_cast<uint64_t>(static_cast<int64_t>(this->versionArray[offset/4]));
+    
+    return PLCTAG_STATUS_OK;
+}
+

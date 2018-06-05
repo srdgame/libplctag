@@ -47,19 +47,19 @@
 volatile int done = 0;
 
 
-volatile plc_tag tag = NULL;
+volatile tag_id tag = 0;
 
 
 
 
-static int open_tag(plc_tag *tag, const char *tag_str)
+static int open_tag(tag_id *tag, const char *tag_str)
 {
     int rc = PLCTAG_STATUS_OK;
     int64_t start_time;
 
     /* create the tag */
     start_time = time_ms();
-    *tag = plc_tag_create(tag_str);
+    *tag = plc_tag_create(tag_str, DATA_TIMEOUT);
 
     /* everything OK? */
     if(! *tag) {
@@ -77,7 +77,7 @@ static int open_tag(plc_tag *tag, const char *tag_str)
     if(rc != PLCTAG_STATUS_OK) {
         fprintf(stderr,"Error %s setting up tag internal state.\n", plc_tag_decode_error(rc));
         plc_tag_destroy(*tag);
-        *tag = (plc_tag)0;
+        *tag = (tag_id)0;
         return rc;
     }
 
@@ -155,7 +155,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    rc = open_tag((plc_tag*)&tag,TAG_PATH);
+    rc = open_tag((tag_id*)&tag,TAG_PATH);
 
     if(rc != PLCTAG_STATUS_OK) {
         fprintf(stderr,"Unable to create tag! rc=(%d) %s\n", rc, plc_tag_decode_error(rc));

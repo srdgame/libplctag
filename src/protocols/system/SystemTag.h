@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -18,17 +18,29 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#ifndef __LIB_INIT_H__
-#define __LIB_INIT_H__ 1
+#pragma once
 
-
+#include <lib/libplctag.h>
+#include <lib/Tag.h>
 #include <util/attr.h>
+#include <util/debug.h>
 
-extern int initialize_modules(void);
+class SystemTag : public Tag
+{
+public:
+    static Create(attr attribs);
+    
+    // tag operation methods, override these.
+    virtual int abort() override;
+    virtual int read() override;
+    virtual int write() override;
+    virtual int status() override;
 
-typedef plc_tag_p (*tag_create_function)(attr attributes);
-extern tag_create_function find_tag_create_func(attr attributes);
+    // tag data methods
+    virtual int getSize() override;
+    virtual int getInt(int offset, int bytes, uint64_t *result) override;
+    virtual int setInt(int offset, int bytes, uint64_t value) override;
+    virtual int getFloat(int offset, int bytes, double *result) override;
+    virtual int setFloat(int offset, int bytes, double value) override;
+};
 
-extern const char *VERSION;
-
-#endif

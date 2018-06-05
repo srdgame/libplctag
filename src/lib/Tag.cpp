@@ -30,10 +30,25 @@ static std::map<int, ref<Tag> > tagMap;
 
 static const int MAX_ID = 100000000;
 
+const char* Tag::VERSION_STR = "2.0.0";
+const int32_t Tag::VERSION_ARRAY[3] = {2, 0, 0};
+
+
+
+void Tag::lock()
+{
+    this->apiMutex.lock();
+}
+
+void Tag::unlock()
+{
+    this->apiMutex.unlock();    
+}
+
+
 
 
 // Must be called with the mutex held! 
-
 static int nextId()
 {
     static int lastID = 1;
@@ -112,3 +127,22 @@ ref<Tag> Tag::getTag(int id)
         return result;
     }
 }
+
+
+
+/*
+ * Stub implementations for all virtual methods.
+ */
+ 
+int Tag::abort() { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::read() { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::write() { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::status() { return PLCTAG_ERR_UNSUPPORTED; }
+
+    // tag data methods
+int Tag::getSize() { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::getInt(int offset, int bytes, uint64_t *result) { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::setInt(int offset, int bytes, uint64_t value) { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::getFloat(int offset, int bytes, double *result) { return PLCTAG_ERR_UNSUPPORTED; }
+int Tag::setFloat(int offset, int bytes, double value) { return PLCTAG_ERR_UNSUPPORTED; }
+

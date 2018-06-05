@@ -17,12 +17,12 @@
 
 int main()
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = 0;
     int rc;
     int i;
 
     /* create the tag */
-    tag = plc_tag_create(TAG_PATH);
+    tag = plc_tag_create(TAG_PATH, 0);
 
     /* everything OK? */
     if(!tag) {
