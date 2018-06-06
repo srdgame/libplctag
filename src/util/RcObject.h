@@ -24,6 +24,7 @@
 #pragma once
 
 #include <atomic>
+#include <util/debug.h>
 
 /*
     nanogui/object.h -- Object base class with support for reference counting
@@ -49,13 +50,14 @@ public:
     RcObject() { }
 
     /// Copy constructor
-    RcObject(const RcObject &) : m_refCount(0) {}
+    RcObject(const RcObject &) : strongCount(0), weakCount(0) {}
 
     /// Return the current reference count
-    int getRefCount() const { return m_refCount; };
+    int getStrongCount() const { return strongCount; };
+    int getWeakCount() const { return strongCount; };
 
     /// Increase the object's reference count by one
-    void incRef() const { ++m_refCount; }
+    void incRef() const { ++strongCount; pdebug(DEBUG_DETAIL,"strongCount is now %d", strongCount.load()); }
 
     /** \brief Decrease the reference count of
      * the object and possibly deallocate it.
@@ -70,7 +72,8 @@ protected:
      */
     virtual ~RcObject();
 private:
-    mutable std::atomic<int> m_refCount { 0 };
+    mutable std::atomic<int> strongCount { 0 };
+    mutable std::atomic<int> weakCount { 0 };    
 };
 
 /**
