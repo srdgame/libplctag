@@ -38,7 +38,11 @@
 
 void RcObject::decRef(bool dealloc) const noexcept {
     --m_refCount;
+    
+    pdebug(DEBUG_DETAIL,"m_refCount is now %d", m_refCount.load());
+    
     if (m_refCount == 0 && dealloc) {
+        pdebug(DEBUG_DETAIL,"Calling object destructor.");
         delete this;
     } else if (m_refCount < 0) {
         pdebug(DEBUG_WARN, "Internal error: Object reference count < 0!\n");
