@@ -43,9 +43,12 @@
 //#include <ab/ab.h>
 
 #include <string.h>
+#include <cfloat>
+#include <inttypes.h>
 #include <lib/libplctag.h>
 #include <platform.h>
 #include <lib/Tag.h>
+#include <ab/ABTag.h>
 #include <system/SystemTag.h>
 #include <util/attr.h>
 #include <util/debug.h>
@@ -69,44 +72,6 @@
 LIB_EXPORT const char* plc_tag_decode_error(int rc)
 {
     switch(rc) {
-        case PLCTAG_STATUS_PENDING: return "PLCTAG_STATUS_PENDING"; break;
-        case PLCTAG_STATUS_OK: return "PLCTAG_STATUS_OK"; break;
-        case PLCTAG_ERR_NULL_PTR: return "PLCTAG_ERR_NULL_PTR"; break;
-        case PLCTAG_ERR_OUT_OF_BOUNDS: return "PLCTAG_ERR_OUT_OF_BOUNDS"; break;
-        case PLCTAG_ERR_NO_MEM: return "PLCTAG_ERR_NO_MEM"; break;
-        case PLCTAG_ERR_NO_RESOURCES: return "PLCTAG_ERR_NO_RESOURCES"; break;
-        case PLCTAG_ERR_BAD_PARAM: return "PLCTAG_ERR_BAD_PARAM"; break;
-        case PLCTAG_ERR_CREATE: return "PLCTAG_ERR_CREATE"; break;
-        case PLCTAG_ERR_NOT_EMPTY: return "PLCTAG_ERR_NOT_EMPTY"; break;
-        case PLCTAG_ERR_OPEN: return "PLCTAG_ERR_OPEN"; break;
-        case PLCTAG_ERR_SET: return "PLCTAG_ERR_SET"; break;
-        case PLCTAG_ERR_WRITE: return "PLCTAG_ERR_WRITE"; break;
-        case PLCTAG_ERR_TIMEOUT: return "PLCTAG_ERR_TIMEOUT"; break;
-        case PLCTAG_ERR_TIMEOUT_ACK: return "PLCTAG_ERR_TIMEOUT_ACK"; break;
-        case PLCTAG_ERR_RETRIES: return "PLCTAG_ERR_RETRIES"; break;
-        case PLCTAG_ERR_READ: return "PLCTAG_ERR_READ"; break;
-        case PLCTAG_ERR_BAD_DATA: return "PLCTAG_ERR_BAD_DATA"; break;
-        case PLCTAG_ERR_ENCODE: return "PLCTAG_ERR_ENCODE"; break;
-        case PLCTAG_ERR_DECODE: return "PLCTAG_ERR_DECODE"; break;
-        case PLCTAG_ERR_UNSUPPORTED: return "PLCTAG_ERR_UNSUPPORTED"; break;
-        case PLCTAG_ERR_TOO_LONG: return "PLCTAG_ERR_TOO_LONG"; break;
-        case PLCTAG_ERR_CLOSE: return "PLCTAG_ERR_CLOSE"; break;
-        case PLCTAG_ERR_NOT_ALLOWED: return "PLCTAG_ERR_NOT_ALLOWED"; break;
-        case PLCTAG_ERR_THREAD: return "PLCTAG_ERR_THREAD"; break;
-        case PLCTAG_ERR_NO_DATA: return "PLCTAG_ERR_NO_DATA"; break;
-        case PLCTAG_ERR_THREAD_JOIN: return "PLCTAG_ERR_THREAD_JOIN"; break;
-        case PLCTAG_ERR_THREAD_CREATE: return "PLCTAG_ERR_THREAD_CREATE"; break;
-        case PLCTAG_ERR_MUTEX_DESTROY: return "PLCTAG_ERR_MUTEX_DESTROY"; break;
-        case PLCTAG_ERR_MUTEX_UNLOCK: return "PLCTAG_ERR_MUTEX_UNLOCK"; break;
-        case PLCTAG_ERR_MUTEX_INIT: return "PLCTAG_ERR_MUTEX_INIT"; break;
-        case PLCTAG_ERR_MUTEX_LOCK: return "PLCTAG_ERR_MUTEX_LOCK"; break;
-        case PLCTAG_ERR_NOT_IMPLEMENTED: return "PLCTAG_ERR_NOT_IMPLEMENTED"; break;
-        case PLCTAG_ERR_BAD_DEVICE: return "PLCTAG_ERR_BAD_DEVICE"; break;
-        case PLCTAG_ERR_BAD_GATEWAY: return "PLCTAG_ERR_BAD_GATEWAY"; break;
-        case PLCTAG_ERR_REMOTE_ERR: return "PLCTAG_ERR_REMOTE_ERR"; break;
-        case PLCTAG_ERR_NOT_FOUND: return "PLCTAG_ERR_NOT_FOUND"; break;
-        case PLCTAG_ERR_ABORT: return "PLCTAG_ERR_ABORT"; break;
-        case PLCTAG_ERR_WINSOCK: return "PLCTAG_ERR_WINSOCK"; break;
 
         default: return "Unknown error."; break;
     }
@@ -126,11 +91,18 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout)
 {
     tag_id id = PLCTAG_ERR_CREATE;
     attr attribs = nullptr;
+    int64_t timeoutEnd = time_ms() + timeout;
+    int rc = PLCTAG_STATUS_OK;
     
     pdebug(DEBUG_INFO,"Starting");
-
+    
     if(!attrib_str || strlen(attrib_str) == 0) {
          pdebug(DEBUG_WARN,"The tag string must not be zero length or null!");
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+
+    if(timeout < 0) {
+        pdebug(DEBUG_WARN,"Timeout must be greater than or equal to zero and is in milliseconds.");
         return PLCTAG_ERR_BAD_PARAM;
     }
 
@@ -150,10 +122,10 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout)
             break;
         }
         
-//        id = ABTag::Create(attribs);
-//        if(id > 0 || id != PLCTAG_ERR_UNSUPPORTED) {
-//            break;
-//        }
+        id = ABTag::Create(attribs);
+        if(id > 0 || id != PLCTAG_ERR_UNSUPPORTED) {
+            break;
+        }
     } while(0);
     
     attr_destroy(attribs);
@@ -162,6 +134,27 @@ LIB_EXPORT tag_id plc_tag_create(const char *attrib_str, int timeout)
     if(id < 0) {
         pdebug(DEBUG_WARN,"Unable to create tag, error %s (%d)!", plc_tag_decode_error(id), id);
         return id;
+    }
+    
+    rc = plc_tag_status(id);
+    
+    while(rc == PLCTAG_STATUS_PENDING && timeoutEnd > time_ms()) {
+        sleep_ms(1); // just release the CPU
+        rc = plc_tag_status(id);
+    }
+    
+    if(rc != PLCTAG_STATUS_OK) {
+        // clean up tag.
+        plc_tag_destroy(id);
+
+        if(rc == PLCTAG_STATUS_PENDING) {
+            pdebug(DEBUG_WARN,"Tag creation timed out!");
+            
+            rc = PLCTAG_ERR_TIMEOUT;
+        }
+        
+        // pass along the status
+        id = rc;
     }
     
     pdebug(DEBUG_INFO,"Done.");
@@ -224,7 +217,20 @@ LIB_EXPORT int plc_tag_unlock(tag_id id)
  */
 LIB_EXPORT int plc_tag_abort(tag_id id)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    // trigger the abort.
+    tag->abort();
+    
+    return PLCTAG_STATUS_OK;
 }
 
 
@@ -236,11 +242,20 @@ LIB_EXPORT int plc_tag_abort(tag_id id)
  * This frees all resources associated with the tag.  Internally, it may result in closed
  * connections etc.   This calls through to a protocol-specific function.
  *
- * This is a function provided by the underlying protocol implementation.
+ * This is a function provided by the underlying protocol implementation via the 
+ * reference counting framework.
  */
 LIB_EXPORT int plc_tag_destroy(tag_id id)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID not found or missing!");
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+
+    // remove it from the Tag hash table.
+    return Tag::removeTag(id);
 }
 
 
@@ -260,7 +275,7 @@ LIB_EXPORT int plc_tag_destroy(tag_id id)
  */
 LIB_EXPORT int plc_tag_read(tag_id id, int timeout)
 {
-    ref<Tag> tag = Tag::getTag(id);
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
     int64_t timeoutEnd = time_ms() + timeout;
     int rc;
     
@@ -277,11 +292,12 @@ LIB_EXPORT int plc_tag_read(tag_id id, int timeout)
     
     while(rc == PLCTAG_STATUS_PENDING && timeoutEnd > time_ms()) {
         sleep_ms(1);
-        rc = tag->status();
+        rc = tag->getStatus();
     }
     
     if(rc == PLCTAG_STATUS_PENDING) {
         rc = PLCTAG_ERR_TIMEOUT;
+        tag->abort();
     }
     
     return rc;
@@ -302,7 +318,17 @@ LIB_EXPORT int plc_tag_read(tag_id id, int timeout)
  */
 LIB_EXPORT int plc_tag_status(tag_id id)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID not found or missing!");
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+    
+    // lock the API mutex.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+
+    return tag->getStatus();
 }
 
 
@@ -324,7 +350,32 @@ LIB_EXPORT int plc_tag_status(tag_id id)
  */
 LIB_EXPORT int plc_tag_write(tag_id id, int timeout)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    int64_t timeoutEnd = time_ms() + timeout;
+    int rc;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    // trigger the write.
+    rc = tag->write();
+    
+    while(rc == PLCTAG_STATUS_PENDING && timeoutEnd > time_ms()) {
+        sleep_ms(1);
+        rc = tag->getStatus();
+    }
+    
+    if(rc == PLCTAG_STATUS_PENDING) {
+        rc = PLCTAG_ERR_TIMEOUT;
+        tag->abort();
+    }
+    
+    return rc;
 }
 
 
@@ -337,85 +388,419 @@ LIB_EXPORT int plc_tag_write(tag_id id, int timeout)
 
 LIB_EXPORT int plc_tag_get_size(tag_id id)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID not found or missing!");
+        return PLCTAG_ERR_BAD_PARAM;
+    }
+    
+    // lock the API mutex.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+
+    return tag->getSize();
 }
+
+
+
+LIB_EXPORT uint64_t plc_tag_get_uint64(tag_id id, int offset)
+{
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t result = UINT64_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 8, &result);
+    
+    if(rc != PLCTAG_STATUS_OK) {
+        result = UINT64_MAX;
+    }
+    
+    return result;
+}
+
+LIB_EXPORT int plc_tag_set_uint64(tag_id id, int offset, uint64_t val)
+{
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 8, val);
+}
+
+
+LIB_EXPORT int64_t plc_tag_get_int64(tag_id id, int offset)
+{
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    int64_t result = INT64_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 8, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<int64_t>(tmp);
+    }
+    
+    return result;
+}
+
+LIB_EXPORT int plc_tag_set_int64(tag_id id, int offset, int64_t val)
+{
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 8, static_cast<uint64_t>(val));
+}
+
 
 
 LIB_EXPORT uint32_t plc_tag_get_uint32(tag_id id, int offset)
 {
-    return 0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    uint32_t result = UINT32_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 4, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<uint32_t>(tmp);
+    }
+    
+    return result;
 }
 
 LIB_EXPORT int plc_tag_set_uint32(tag_id id, int offset, uint32_t val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 4, static_cast<uint64_t>(val));
 }
 
 
 LIB_EXPORT int32_t plc_tag_get_int32(tag_id id, int offset)
 {
-    return 0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    int32_t result = INT32_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 4, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<int32_t>(static_cast<uint32_t>(tmp));
+    }
+    
+    return result;
 }
 
 LIB_EXPORT int plc_tag_set_int32(tag_id id, int offset, int32_t val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 4, static_cast<uint64_t>(static_cast<uint32_t>(val)));
 }
 
 
 LIB_EXPORT uint16_t plc_tag_get_uint16(tag_id id, int offset)
 {
-    return 0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    uint16_t result = UINT16_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 2, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<uint16_t>(tmp);
+    }
+    
+    return result;
 }
 
 LIB_EXPORT int plc_tag_set_uint16(tag_id id, int offset, uint16_t val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 2, static_cast<uint64_t>(val));
 }
 
 
 LIB_EXPORT int16_t plc_tag_get_int16(tag_id id, int offset)
 {
-    return 0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    int16_t result = INT16_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 2, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<int16_t>(static_cast<uint16_t>(tmp));
+    }
+    
+    return result;
 }
 
 LIB_EXPORT int plc_tag_set_int16(tag_id id, int offset, int16_t val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 2, static_cast<uint64_t>(static_cast<uint16_t>(val)));
 }
 
 
 LIB_EXPORT uint8_t plc_tag_get_uint8(tag_id id, int offset)
 {
-    return 0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    uint8_t result = UINT8_MAX;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 1, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<uint8_t>(tmp);
+    }
+    
+    return result;
 }
 
 LIB_EXPORT int plc_tag_set_uint8(tag_id id, int offset, uint8_t val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 1, static_cast<uint64_t>(val));
 }
 
 
 LIB_EXPORT int8_t plc_tag_get_int8(tag_id id, int offset)
 {
-    return 0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    uint64_t tmp = 0;
+    int8_t result = INT8_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getInt(offset, 1, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {
+        result = static_cast<int8_t>(static_cast<uint8_t>(tmp));
+    }
+    
+    return result;
 }
 
-LIB_EXPORT int plc_tag_set_int8(tag_id, int offset, int8_t val)
+LIB_EXPORT int plc_tag_set_int8(tag_id id, int offset, int8_t val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    return tag->setInt(offset, 1, static_cast<uint64_t>(static_cast<uint8_t>(val)));
 }
 
+
+
+LIB_EXPORT double plc_tag_get_float64(tag_id id, int offset)
+{
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    double result = DBL_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getFloat(offset, 8, &result);
+    
+    if(rc != PLCTAG_STATUS_OK) {    
+        result = DBL_MIN;
+    }
+    
+    return result;
+}
+
+
+LIB_EXPORT int plc_tag_set_float64(tag_id id, int offset, double val)
+{
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+
+    return tag->setFloat(offset, 8, val);
+}
 
 
 LIB_EXPORT float plc_tag_get_float32(tag_id id, int offset)
 {
-    return 0.0;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    double tmp = 0;
+    float result = FLT_MIN;
+    int rc = PLCTAG_STATUS_OK;
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+    
+    rc = tag->getFloat(offset, 4, &tmp);
+    
+    if(rc == PLCTAG_STATUS_OK) {    
+        result = static_cast<float>(tmp);
+    }
+    
+    return result;
 }
 
 
 LIB_EXPORT int plc_tag_set_float32(tag_id id, int offset, float val)
 {
-    return PLCTAG_ERR_NOT_IMPLEMENTED;
+    std::shared_ptr<Tag> tag = Tag::getTag(id);
+    
+    if(!tag) {
+        pdebug(DEBUG_WARN,"Tag ID incorrect or tag missing!");
+        return PLCTAG_ERR_NOT_FOUND;
+    }
+    
+    // lock the API lock.
+    std::lock_guard<std::mutex> guard(tag->apiMutex);
+
+    return tag->setFloat(offset, 4, static_cast<double>(val));
 }
 

@@ -30,11 +30,12 @@ class SystemTag : public Tag
 public:
     static Create(attr attribs);
     
+    virtual ~SystemTag();
+    
     // tag operation methods, override these.
-    virtual int abort() override;
+    virtual void abort() override;
     virtual int read() override;
     virtual int write() override;
-    virtual int status() override;
 
     // tag data methods
     virtual int getSize() override;

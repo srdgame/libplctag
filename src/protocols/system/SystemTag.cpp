@@ -27,7 +27,11 @@
 #include <util/debug.h>
 
 
-
+SystemTag::~SystemTag()
+{
+    pdebug(DEBUG_INFO,"Starting.");
+    pdebug(DEBUG_INFO,"Done.");
+}
 
 int SystemTag::Create(attr attribs)
 {
@@ -89,10 +93,7 @@ int SystemTag::Create(attr attribs)
 }
 
 
-int SystemTag::abort()
-{
-    return PLCTAG_STATUS_OK;
-}
+void SystemTag::abort() {}
 
 int SystemTag::read()
 {
@@ -102,11 +103,6 @@ int SystemTag::read()
 int SystemTag::write()
 {
     return PLCTAG_ERR_NOT_IMPLEMENTED;
-}
-
-int SystemTag::status()
-{
-    return PLCTAG_STATUS_OK;
 }
 
 

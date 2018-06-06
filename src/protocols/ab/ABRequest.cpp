@@ -18,82 +18,67 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <inttypes.h>
-#include <lib/libplctag.h>
-#include <system/SystemTagDebug.h>
 #include <platform.h>
-#include <util/attr.h>
 #include <util/debug.h>
+#include <ab/ABRequest.h>
 
-
-
-SystemTagDebug::~SystemTagDebug() 
+ABRequest::ABRequest(int capacity)
 {
-    pdebug(DEBUG_INFO,"Starting.");
-    pdebug(DEBUG_INFO,"Done.");
-}
+    pdebug(DEBUG_DETAIL,"Starting.");
 
-int SystemTagDebug::read()
-{
-    this->debugLevel = get_debug_level();
+    this->data = new uint8_t[capacity+1];
+    this->capacity = capacity;
     
-    return PLCTAG_STATUS_OK;
-}
-
-int SystemTagDebug::write()
-{
-    set_debug_level(this->debugLevel);
+    this->data[capacity] = UINT8_MAX;
     
-    return PLCTAG_STATUS_OK;
-}
-
-int SystemTagDebug::getSize()
-{
-    return sizeof(int32_t);
+    pdebug(DEBUG_DETAIL, "Done.");
 }
 
 
-int SystemTagDebug::getInt(int offset, int bytes, uint64_t *result)
+ABRequest::~ABRequest()
 {
-    if(offset != 0) {
-        pdebug(DEBUG_WARN,"Only offset 0 is supported.");
-        return PLCTAG_ERR_UNSUPPORTED;
+    pdebug(DEBUG_DETAIL,"Starting.");
+    
+    if(this->data) {
+        delete[] this->data;
+        this->data = nullptr;
     }
     
-    if(bytes != 4) {
-        pdebug(DEBUG_WARN,"Only integers of size 4 bytes are supported.");
-        return PLCTAG_ERR_UNSUPPORTED;
-    }
-    
-    if(result == nullptr) {
-        return PLCTAG_ERR_NULL_PTR;
-    }
-    
-    *result = static_cast<uint64_t>(static_cast<int64_t>(this->debugLevel));
-    
-    return PLCTAG_STATUS_OK;
+    pdebug(DEBUG_DETAIL, "Done.");
 }
 
 
-int SystemTagDebug::setInt(int offset, int bytes, uint64_t value)
-{
-    int32_t newLevel = static_cast<int32_t>(static_cast<int64_t>(value));
-    
-    if(offset != 0) {
-        pdebug(DEBUG_WARN,"Only offset 0 is supported.");
-        return PLCTAG_ERR_UNSUPPORTED;
-    }
-    
-    if(bytes != 4) {
-        pdebug(DEBUG_WARN,"Only integers of size 4 bytes are supported.");
-        return PLCTAG_ERR_UNSUPPORTED;
-    }
-    
-    if(newLevel < 0 || newLevel >= DEBUG_END) {
-        return PLCTAG_ERR_BAD_PARAM;
-    }
 
-    this->debugLevel = newLevel;
+int ABRequest::getStatus()
+{
+    return this->status.load();
+}
+
+int ABRequest::setStatus(int newStatus)
+{
+    int oldStatus = this->status.load();
     
-    return PLCTAG_STATUS_OK;
+    this->status.store(newStatus);
+    
+    return oldStatus;
+}
+
+void ABRequest::clear()
+{
+    mem_set(this->data, 0, this->capacity);
+}
+
+int ABRequest::size()
+{ 
+    return this->capacity;
+}
+
+uint8_t& ABRequest::operator[](int index)
+{
+    if(index >= 0 && index < capacity) {
+        return this->data[index];
+    }
+    
+    // extra byte for padding.
+    return this->data[capacity];
 }

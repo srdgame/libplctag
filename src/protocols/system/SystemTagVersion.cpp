@@ -25,6 +25,13 @@
 #include <util/debug.h>
 
 
+SystemTagVersion::~SystemTagVersion()
+{
+    pdebug(DEBUG_INFO,"Starting.");
+    pdebug(DEBUG_INFO,"Done.");
+}
+
+
 int SystemTagVersion::read()
 {
     this->versionArray[0] = Tag::VERSION_ARRAY[0];

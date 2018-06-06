@@ -106,60 +106,6 @@ extern int str_to_int(const char *str, int *val);
 extern int str_to_float(const char *str, float *val);
 extern char **str_split(const char *str, const char *sep);
 
-/* mutex functions/defs */
-typedef struct mutex_t *mutex_p;
-extern int mutex_create(mutex_p *m);
-extern int mutex_lock(mutex_p m);
-extern int mutex_unlock(mutex_p m);
-extern int mutex_destroy(mutex_p *m);
-
-/* macros are evil */
-
-/*
- * Use this one like this:
- *
- *     critical_block(my_mutex) {
- *         locked_data++;
- *         foo(locked_data);
- *     }
- *
- * The macro locks and unlocks for you.  Derived from ideas/code on StackOverflow.com.
- *
- * Do not use break, return, goto or continue inside the synchronized block if
- * you intend to have them apply to a loop outside the synchronized block.
- *
- * You can use break, but it will drop out of the inner for loop and correctly
- * unlock the mutex.  It will NOT break out of any surrounding loop outside the
- * synchronized block.
- */
-
-#define PLCTAG_CAT2(a,b) a##b
-#define PLCTAG_CAT(a,b) PLCTAG_CAT2(a,b)
-#define LINE_ID(base) PLCTAG_CAT(base,__LINE__)
-
-#define critical_block(lock) \
-for(int LINE_ID(__sync_flag_nargle_) = 1; LINE_ID(__sync_flag_nargle_); LINE_ID(__sync_flag_nargle_) = 0, mutex_unlock(lock))  for(int LINE_ID(__sync_rc_nargle_) = mutex_lock(lock); LINE_ID(__sync_rc_nargle_) == PLCTAG_STATUS_OK && LINE_ID(__sync_flag_nargle_) ; LINE_ID(__sync_flag_nargle_) = 0)
-
-/* thread functions/defs */
-typedef struct thread_t *thread_p;
-//typedef PTHREAD_START_ROUTINE thread_func_t;
-//typedef DWORD /*WINAPI*/ (*thread_func_t)(void *lpParam );
-extern int thread_create(thread_p *t, LPTHREAD_START_ROUTINE func, int stacksize, void *arg);
-extern void thread_stop(void);
-extern int thread_join(thread_p t);
-extern int thread_destroy(thread_p *t);
-
-#define THREAD_LOCAL __declspec(thread)
-
-/* atomic operations */
-typedef volatile long int lock_t;
-
-#define LOCK_INIT (0)
-
-/* returns non-zero when lock acquired, zero when lock operation failed */
-extern int lock_acquire(lock_t *lock);
-extern void lock_release(lock_t *lock);
-
 /* socket functions */
 typedef struct sock_t *sock_p;
 extern int socket_create(sock_p *s);

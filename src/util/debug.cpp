@@ -33,6 +33,7 @@
 #include <string.h>
 #include <util/debug.h>
 #include <platform.h>
+#include <atomic>
 
 
 
@@ -60,19 +61,15 @@ extern int get_debug_level(void)
 }
 
 
-static lock_t thread_num_lock = LOCK_INIT;
-static volatile uint32_t thread_num = 1;
+static std::atomic<uint32_t> thread_num{1};
 
-static THREAD_LOCAL uint32_t this_thread_num = 0;
+static thread_local uint32_t this_thread_num = 0;
 
 
 static uint32_t get_thread_id()
 {
     if(!this_thread_num) {
-        while(!lock_acquire(&thread_num_lock)) { } /* FIXME - this could hang! just keep trying */
-            this_thread_num = thread_num;
-            thread_num++;
-        lock_release(&thread_num_lock);
+        this_thread_num = ++thread_num;
     }
 
     return this_thread_num;

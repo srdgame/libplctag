@@ -21,25 +21,37 @@
 #pragma once
 
 #include <inttypes.h>
-#include <lib/libplctag.h>
-#include <lib/Tag.h>
-#include <system/SystemTag.h>
+#include <thread>
+#include <mutex>
+#include <ab/ABRequest.h>
 #include <util/attr.h>
-#include <util/debug.h>
 
-class SystemTagVersion : public SystemTag
+class LogixPLC
 {
 public:
-    virtual ~SystemTagVersion();
-    
-    // tag operation methods to override
-    virtual int read();
+    static std::shared_ptr<LogixPLC> Get(attr attribs);
 
-    // tag data methods to override
-    virtual int getSize();
-    virtual int getInt(int offset, int bytes, uint64_t *result);
+    LogixPLC(std::string path);
+    virtual ~LogixPLC();
+
+    int getStatus();
     
+    const char *decodeCIPErrorShort(uint8_t *data);
+    const char *decodeCIPErrorLong(uint8_t *data);
+    int decodeCIPErrorCode(uint8_t *data);
+
 protected:
-    int32_t versionArray[3] = {0,0,0};
+
+    void run(void);
+    int setStatus(int newStatus);
+    
+    bool terminate;
+    std::mutex requestMutex;
+    std::thread plcThread;
+    
+    // state
+    std::atomic<int> status;
+    enum { START } state;
+    std::string path;
 };
 

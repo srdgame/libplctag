@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -18,28 +18,46 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#pragma once
 
-#ifndef __UTIL__REFCOUNT_H__
-#define __UTIL__REFCOUNT_H__ 1
+#include <lib/Tag.h>
+#include <ab/ABRequest.h>
+#include <util/attr.h>
+#include <mutex>
 
-#include <platform.h>
 
+class ABTag : public Tag
+{
+public:
+    static int Create(attr attribs);
 
-struct refcount {
-    int count;
-    lock_t lock;
-    void *data;
-    void (*delete_func)(void *data);
+    virtual ~ABTag();
+    
+    // tag operation methods
+    virtual void abort()=0;
+    virtual int read() override;
+    virtual int write() override;
+    
+    virtual int getSize() override;
+    virtual int getInt(int offset, int bytes, uint64_t *result) override;
+    virtual int setInt(int offset, int bytes, uint64_t value) override;
+    virtual int getFloat(int offset, int bytes, double *result) override;
+    virtual int setFloat(int offset, int bytes, double value) override;
+
+protected:
+    static int getIntImpl(uint8_t *data, int dataSize, int offset, int bytes, uint64_t *result);
+    static int setIntImpl(uint8_t *data, int dataSize, int offset, int bytes, uint64_t value);
+    static int getFloatImpl(uint8_t *data, int dataSize, int offset, int bytes, double *result);
+    static int setFloatImpl(uint8_t *data, int dataSize, int offset, int bytes, double value);
+
+    
+    // state that might be shared.
+    std::mutex sharedStateMutex;
+
+    bool readRequested;
+    bool writeRequested;
+    uint8_t *data = nullptr;
+    int dataSize = 0;
+    std::shared_ptr<ABRequest> request = nullptr;
 };
 
-
-typedef struct refcount refcount;
-
-
-extern refcount refcount_init(int count, void *data, void (*delete_func)(void *data));
-extern int refcount_acquire(refcount *rc);
-extern int refcount_release(refcount *rc);
-extern int refcount_get_count(refcount *rc);
-
-
-#endif

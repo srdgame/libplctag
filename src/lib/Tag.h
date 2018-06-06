@@ -21,28 +21,35 @@
 #pragma once
 
 #include <mutex>
-#include <util/RcObject.h>
+#include <lib/libplctag.h>
+#include <memory>
+#include <atomic>
 
-class Tag : public RcObject {
+class Tag {
 public:
     static const char* VERSION_STR;
     static const int32_t VERSION_ARRAY[3];
 
     static int addTag(Tag *tag);
     static int removeTag(int id);
-    static ref<Tag> getTag(int id);
+    static std::shared_ptr<Tag> getTag(int id);
+
+    // make the destructor virtual so that we call the subclass.
+    virtual ~Tag();
     
     // generic
     void lock();
     void unlock();
     
     // subclass responsibility below.
+    virtual void run(void);
     
     // tag operation methods
-    virtual int abort();
+    virtual void abort();
     virtual int read();
     virtual int write();
-    virtual int status();
+    virtual int getStatus();
+    virtual int setStatus(int newStatus);
 
     // tag data methods
     virtual int getSize();
@@ -55,4 +62,5 @@ public:
     
 protected:
     int id = PLCTAG_ERR_NOT_FOUND;
+    std::atomic<int> status{PLCTAG_STATUS_OK};
 };

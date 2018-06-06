@@ -1,8 +1,5 @@
 /***************************************************************************
- * The following code was copied from the NanoGUI project.   The license   *
- * is governed by the file NanoGUI-LICENSE.txt in the root directory.      *
- *                                                                         *
- *   All modifications copyright (C) 2018 by Kyle Hayes                    *
+ *   Copyright (C) 2018 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -21,32 +18,34 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#pragma once
 
-#include <util/debug.h>
-#include <util/RcObject.h>
+#include <atomic>
+#include <ab/ABTag.h>
+#include <ab/LogixPLC.h>
+#include <util/attr.h>
+#include <memory>
 
-/* the following was spliced out of NanoGUI's common.cpp */
-
-/*
-    NanoGUI was developed by Wenzel Jakob <wenzel.jakob@epfl.ch>.
-    The widget drawing code is based on the NanoVG demo application
-    by Mikko Mononen.
-
-    All rights reserved. Use of this source code is governed by a
-    BSD-style license that can be found in the NanoGUI-LICENSE file.
-*/
-
-void RcObject::decRef(bool dealloc) const noexcept {
-    --m_refCount;
+class LogixTag : public ABTag
+{
+public:
+    LogixTag(attr attribs);
+    virtual ~LogixTag();
     
-    pdebug(DEBUG_DETAIL,"m_refCount is now %d", m_refCount.load());
-    
-    if (m_refCount == 0 && dealloc) {
-        pdebug(DEBUG_DETAIL,"Calling object destructor.");
-        delete this;
-    } else if (m_refCount < 0) {
-        pdebug(DEBUG_WARN, "Internal error: Object reference count < 0!\n");
-    }
-}
+    virtual void run(void) override;
+    virtual void abort(void) override;
 
-RcObject::~RcObject() { }
+protected:
+    void startRead();
+    void processRead();
+    void startWrite();
+    void processWrite();
+
+    std::string name;
+    int elemCount;
+    std::shared_ptr<LogixPLC> plc;
+    std::shared_ptr<ABRequest> request;
+    int byteOffset;
+    enum { IDLE, READING, WRITING } state;
+};
+

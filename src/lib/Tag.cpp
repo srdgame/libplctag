@@ -22,17 +22,79 @@
 #include <lib/Tag.h>
 #include <util/debug.h>
 #include <mutex>
+#include <thread>
 #include <map>
 
 static std::mutex tagMutex;
-static std::map<int, ref<Tag> > tagMap;
+static std::map<int, std::shared_ptr<Tag> > tagMap;
 
+
+
+// throwaway class to help force the handler thread to stop.
+class TagHandlerWrapper {
+public:
+    TagHandlerWrapper();
+    ~TagHandlerWrapper();
+    
+private:
+    std::thread tagHandlerThread;
+    std::atomic<bool> terminate;
+    
+    void tagHandler();
+};
+
+TagHandlerWrapper::TagHandlerWrapper()
+{
+    this->terminate = false;
+    this->tagHandlerThread = std::thread(TagHandlerWrapper::tagHandler, this);
+}
+
+TagHandlerWrapper::~TagHandlerWrapper()
+{
+    this->terminate = true;
+    this->tagHandlerThread.join();
+}
+
+void TagHandlerWrapper::tagHandler(void)
+{
+    // FIXME - this seems dangerous.  Will it ever terminate?
+    // FIXME - this is probably not exception safe.
+    while(!this->terminate) {
+        // get the mutex first.
+        tagMutex.lock();
+
+        // iterate over the tags calling run().
+        std::map<int, std::shared_ptr<Tag> >::iterator it;
+        for(it = tagMap.begin(); it != tagMap.end(); it++) {
+            std::shared_ptr<Tag> tag = it->second;
+            
+            if(tag) {
+                pdebug(DEBUG_SPEW, "Calling run() on tag.");
+                tag->run();
+            }
+        }
+        
+        tagMutex.unlock();
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+static TagHandlerWrapper tagHandlerWrapper;
 
 static const int MAX_ID = 100000000;
 
 const char* Tag::VERSION_STR = "2.0.0";
 const int32_t Tag::VERSION_ARRAY[3] = {2, 0, 0};
 
+
+
+
+Tag::~Tag() 
+{
+    pdebug(DEBUG_INFO,"Starting.");
+    pdebug(DEBUG_INFO, "Done.");
+}
 
 
 void Tag::lock()
@@ -77,7 +139,7 @@ int Tag::addTag(Tag *tag)
     int newID = nextId();
     
     if(newID > 0) {
-        ref<Tag> tmp(tag);
+        std::shared_ptr<Tag> tmp(tag);
         
         tag->id = newID;
         tagMap[newID] = tmp;
@@ -90,7 +152,7 @@ int Tag::removeTag(int id)
 {
     // get the mutex first.
     std::lock_guard<std::mutex> guard(tagMutex);
-    std::map<int, ref<Tag> >::iterator it = tagMap.find(id);
+    std::map<int, std::shared_ptr<Tag> >::iterator it = tagMap.find(id);
     
     if(it != tagMap.end()) {
         if(it->second->id == id) {
@@ -108,12 +170,12 @@ int Tag::removeTag(int id)
 }
 
 
-ref<Tag> Tag::getTag(int id)
+std::shared_ptr<Tag> Tag::getTag(int id)
 {
     // get the mutex first.
     std::lock_guard<std::mutex> guard(tagMutex);
-    ref<Tag> result;
-    std::map<int, ref<Tag> >::iterator it = tagMap.find(id);
+    std::shared_ptr<Tag> result;
+    std::map<int, std::shared_ptr<Tag> >::iterator it = tagMap.find(id);
     
     if(it != tagMap.end()) {
         if(it->second->id == id) {
@@ -134,10 +196,22 @@ ref<Tag> Tag::getTag(int id)
  * Stub implementations for all virtual methods.
  */
  
-int Tag::abort() { return PLCTAG_ERR_UNSUPPORTED; }
+void Tag::run(void) {} 
+
+ 
+void Tag::abort() {}
 int Tag::read() { return PLCTAG_ERR_UNSUPPORTED; }
 int Tag::write() { return PLCTAG_ERR_UNSUPPORTED; }
-int Tag::status() { return PLCTAG_ERR_UNSUPPORTED; }
+
+int Tag::getStatus() { return this->status; }
+int Tag::setStatus(int newStatus) 
+{
+    int oldStatus = this->status; 
+    
+    this->status = newStatus; 
+    
+    return oldStatus;
+}
 
     // tag data methods
 int Tag::getSize() { return PLCTAG_ERR_UNSUPPORTED; }

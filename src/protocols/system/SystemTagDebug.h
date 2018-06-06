@@ -29,14 +29,16 @@
 class SystemTagDebug : public SystemTag
 {
 public:
+    virtual ~SystemTagDebug();
+    
     // tag operation methods to override
-    virtual int read();
-    virtual int write();
+    virtual int read() override;
+    virtual int write() override;
 
     // tag data methods to override
-    virtual int getSize();
-    virtual int getInt(int offset, int bytes, uint64_t *result);
-    virtual int setInt(int offset, int bytes, uint64_t value);
+    virtual int getSize() override;
+    virtual int getInt(int offset, int bytes, uint64_t *result) override;
+    virtual int setInt(int offset, int bytes, uint64_t value) override;
     
 protected:
     int32_t debugLevel = DEBUG_NONE;

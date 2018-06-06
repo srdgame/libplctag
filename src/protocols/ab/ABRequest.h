@@ -21,25 +21,24 @@
 #pragma once
 
 #include <inttypes.h>
-#include <lib/libplctag.h>
-#include <lib/Tag.h>
-#include <system/SystemTag.h>
-#include <util/attr.h>
-#include <util/debug.h>
+#include <atomic>
 
-class SystemTagVersion : public SystemTag
+class ABRequest
 {
 public:
-    virtual ~SystemTagVersion();
+    ABRequest(int capacity);
+    ~ABRequest();
     
-    // tag operation methods to override
-    virtual int read();
+    int getStatus();
+    int setStatus(int newStatus);
 
-    // tag data methods to override
-    virtual int getSize();
-    virtual int getInt(int offset, int bytes, uint64_t *result);
+    void clear();
+    int size();
+    uint8_t& operator[](int index);
     
 protected:
-    int32_t versionArray[3] = {0,0,0};
+    int capacity;
+    std::atomic<int> status;
+    uint8_t *data;
 };
 

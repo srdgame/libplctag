@@ -59,55 +59,6 @@ extern int str_to_int(const char *str, int *val);
 extern int str_to_float(const char *str, float *val);
 extern char **str_split(const char *str, const char *sep);
 
-/* mutex functions/defs */
-typedef struct mutex_t *mutex_p;
-extern int mutex_create(mutex_p *m);
-extern int mutex_lock(mutex_p m);
-extern int mutex_unlock(mutex_p m);
-extern int mutex_destroy(mutex_p *m);
-
-
-
-/* macros are evil */
-
-/*
- * Use this one like this:
- *
- *     critical_block(my_mutex) {
- *         locked_data++;
- *         foo(locked_data);
- *     }
- *
- * The macro locks and unlocks for you.  Derived from ideas/code on StackOverflow.com.
- *
- * Do not use break, return, goto or continue inside the synchronized block if
- * you intend to have them apply to a loop outside the synchronized block.
- *
- * You can use break, but it will drop out of the inner for loop and correctly
- * unlock the mutex.  It will NOT break out of any surrounding loop outside the
- * synchronized block.
- */
-#define critical_block(lock) \
-for(int __sync_flag_nargle_##__LINE__ = 1; __sync_flag_nargle_##__LINE__ ; __sync_flag_nargle_##__LINE__ = 0, mutex_unlock(lock))  for(int __sync_rc_nargle_##__LINE__ = mutex_lock(lock); __sync_rc_nargle_##__LINE__ == PLCTAG_STATUS_OK && __sync_flag_nargle_##__LINE__ ; __sync_flag_nargle_##__LINE__ = 0)
-
-/* thread functions/defs */
-typedef struct thread_t *thread_p;
-typedef void *(*thread_func_t)(void *arg);
-extern int thread_create(thread_p *t, thread_func_t func, int stacksize, void *arg);
-extern void thread_stop(void) __attribute__((noreturn));
-extern int thread_join(thread_p t);
-extern int thread_destroy(thread_p *t);
-
-#define THREAD_LOCAL __thread
-
-/* atomic operations */
-typedef int lock_t;
-
-#define LOCK_INIT (0)
-
-/* returns non-zero when lock acquired, zero when lock operation failed */
-extern int lock_acquire(lock_t *lock);
-extern void lock_release(lock_t *lock);
 
 /* socket functions */
 typedef struct sock_t *sock_p;
