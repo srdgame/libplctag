@@ -11,23 +11,18 @@
 
 int main()
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLCTAG_ERR_CREATE;
     int rc;
     int i;
 
     /* create the tag */
-    tag = plc_tag_create(TAG_PATH);
+    tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
 
     /* everything OK? */
-    if(!tag) {
-        fprintf(stderr,"ERROR: Could not create tag!\n");
+    if(tag < 0) {
+        fprintf(stderr,"ERROR: Could not create tag!  Error %s\n", plc_tag_decode_error(tag));
 
         return 0;
-    }
-
-    /* let the connect succeed we hope */
-    while(plc_tag_status(tag) == PLCTAG_STATUS_PENDING) {
-        sleep_ms(100);
     }
 
     if(plc_tag_status(tag) != PLCTAG_STATUS_OK) {

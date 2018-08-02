@@ -36,7 +36,7 @@
 
 
 
-void log_data(plc_tag tag)
+void log_data(tag_id tag)
 {
     static int log_year = 0;
     static int log_month = 0;
@@ -85,8 +85,8 @@ void log_data(plc_tag tag)
 
 int main(int argc, char **argv)
 {
-    plc_tag tag = PLC_TAG_NULL;
-    int rc;
+    tag_id tag = PLCTAG_ERR_CREATE;
+    int rc = PLCTAG_STATUS_OK;
     int delay = 200; /* ms */
 
     if(argc>1) {
@@ -100,11 +100,11 @@ int main(int argc, char **argv)
 
 
     /* create the tag */
-    tag = plc_tag_create(TAG_PATH);
+    tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
 
     /* everything OK? */
-    if(!tag) {
-        fprintf(stderr,"ERROR: Could not create tag!\n");
+    if(tag < 0) {
+        fprintf(stderr,"ERROR: Could not create tag!  Error %s\n", plc_tag_decode_error(tag));
 
         return 0;
     }
@@ -119,16 +119,21 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    rc = plc_tag_read(tag, 1000);
+    rc = plc_tag_read(tag, DATA_TIMEOUT);
+
+    if(rc != PLCTAG_STATUS_OK) {
+        fprintf(stderr,"Error reading tag!  Error %s\n", plc_tag_decode_error(rc));
+        return 0;
+    }
 
     while(1) {
         /* get the data */
-        rc = plc_tag_read(tag, 0);
+        rc = plc_tag_read(tag, DATA_TIMEOUT);
 
         sleep_ms(delay);
 
         if(plc_tag_status(tag) != PLCTAG_STATUS_OK) {
-            fprintf(stderr,"ERROR: Unable to read the data! Got error code %d\n",rc);
+            fprintf(stderr,"ERROR: Unable to read the data! Got error %s\n",plc_tag_decode_error(plc_tag_status(tag)));
 
             return 0;
         }

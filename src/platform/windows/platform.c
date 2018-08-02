@@ -492,6 +492,33 @@ int mutex_lock(mutex_p m)
 
 
 
+int mutex_try_lock(mutex_p m)
+{
+    DWORD dwWaitResult;
+
+    //pdebug("Starting");
+
+    if(!m) {
+        /*pdebug("null mutex pointer.");*/
+        return PLCTAG_ERR_NULL_PTR;
+    }
+
+    if(!m->initialized) {
+        return PLCTAG_ERR_MUTEX_INIT;
+    }
+
+    dwWaitResult = WaitForSingleObject(m->h_mutex, 0);
+    if(dwWaitResult == WAIT_OBJECT_0) {
+        /* we got the lock */
+        return PLCTAG_STATUS_OK;
+    } else {
+        return PLCTAG_ERR_MUTEX_LOCK;
+    }
+}
+
+
+
+
 int mutex_unlock(mutex_p m)
 {
     //pdebug("Starting.");

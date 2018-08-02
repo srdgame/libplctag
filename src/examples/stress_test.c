@@ -50,32 +50,26 @@ volatile int test_flags = 0;
 
 
 
-static int open_tag(plc_tag *tag, const char *tag_str)
+static int open_tag(tag_id *tag, const char *tag_str)
 {
     int rc = PLCTAG_STATUS_OK;
-    int64_t start_time;
 
     /* create the tag */
-    start_time = time_ms();
-    *tag = plc_tag_create(tag_str);
+    *tag = plc_tag_create(tag_str, DATA_TIMEOUT);
 
     /* everything OK? */
     if(! *tag) {
         fprintf(stderr,"ERROR: Could not create tag!\n");
         return PLCTAG_ERR_CREATE;
-    } else {
-        fprintf(stderr, "INFO: Tag created with status %s\n", plc_tag_decode_error(plc_tag_status(*tag)));
     }
 
-    /* let the connect succeed we hope */
-    while((start_time + 2000) > time_ms() && (rc = plc_tag_status(*tag)) == PLCTAG_STATUS_PENDING) {
-        sleep_ms(10);
-    }
+    rc = plc_tag_status(*tag);
+    fprintf(stderr, "INFO: Tag created with status %s\n", plc_tag_decode_error(rc));
 
     if(rc != PLCTAG_STATUS_OK) {
         fprintf(stderr,"Error %s setting up tag internal state.\n", plc_tag_decode_error(rc));
         plc_tag_destroy(*tag);
-        *tag = (plc_tag)0;
+        *tag = (tag_id)0;
         return rc;
     }
 
@@ -91,7 +85,7 @@ void *test_dhp(void *data)
     int16_t value;
     uint64_t start;
     uint64_t end;
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLCTAG_ERR_CREATE;
     int rc = PLCTAG_STATUS_OK;
     int iteration = 1;
 
@@ -130,11 +124,11 @@ void *test_dhp(void *data)
 
         fprintf(stderr,"Thread %d, iteration %d, got result %d with return code %s in %dms\n",tid, iteration, value, plc_tag_decode_error(rc), (int)(end-start));
 
-/*        if(iteration >= 100) {
-            iteration = 1;
-            sleep_ms(5000);
-        }
-*/
+        /*        if(iteration >= 100) {
+                    iteration = 1;
+                    sleep_ms(5000);
+                }
+        */
         iteration++;
     }
 
@@ -155,47 +149,47 @@ void *test_cip(void *data)
     int32_t value;
     uint64_t start;
     uint64_t end;
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLCTAG_ERR_CREATE;
     int rc = PLCTAG_STATUS_OK;
     int iteration = 1;
     int no_destroy = 0;
 
     switch(test_flags) {
-        case 0:
-            tag_str = tag_str_no_connect;
-            no_destroy = 1;
-            fprintf(stderr,"Test %d, testing unconnected CIP, do not destroy tag each cycle.\n", tid);
-            break;
-        case 1:
-            tag_str = tag_str_connect_shared;
-            fprintf(stderr,"Test %d, testing connected CIP, shared connections, do not destroy tag each cycle.\n", tid);
-            no_destroy = 1;
-            break;
-        case 2:
-            tag_str = tag_str_connect_not_shared;
-            fprintf(stderr,"Test %d, testing connected CIP, do not share connections, do not destroy tag each cycle.\n", tid);
-            no_destroy = 1;
-            break;
-        case 10:
-            tag_str = tag_str_no_connect;
-            no_destroy = 0;
-            fprintf(stderr,"Test %d, testing unconnected CIP, recreate and destroy tag each cycle.\n", tid);
-            break;
-        case 11:
-            tag_str = tag_str_connect_shared;
-            fprintf(stderr,"Test %d, testing connected CIP, shared connections, recreate and destroy tag each cycle.\n", tid);
-            no_destroy = 0;
-            break;
-        case 12:
-            tag_str = tag_str_connect_not_shared;
-            fprintf(stderr,"Test %d, testing connected CIP, do not share connections, recreate and destroy tag each cycle.\n", tid);
-            no_destroy = 0;
-            break;
-        default:
-            fprintf(stderr,"Illegal test type, pick 0-2\n");
-            done = 1;
-            return NULL;
-            break;
+    case 0:
+        tag_str = tag_str_no_connect;
+        no_destroy = 1;
+        fprintf(stderr,"Test %d, testing unconnected CIP, do not destroy tag each cycle.\n", tid);
+        break;
+    case 1:
+        tag_str = tag_str_connect_shared;
+        fprintf(stderr,"Test %d, testing connected CIP, shared connections, do not destroy tag each cycle.\n", tid);
+        no_destroy = 1;
+        break;
+    case 2:
+        tag_str = tag_str_connect_not_shared;
+        fprintf(stderr,"Test %d, testing connected CIP, do not share connections, do not destroy tag each cycle.\n", tid);
+        no_destroy = 1;
+        break;
+    case 10:
+        tag_str = tag_str_no_connect;
+        no_destroy = 0;
+        fprintf(stderr,"Test %d, testing unconnected CIP, recreate and destroy tag each cycle.\n", tid);
+        break;
+    case 11:
+        tag_str = tag_str_connect_shared;
+        fprintf(stderr,"Test %d, testing connected CIP, shared connections, recreate and destroy tag each cycle.\n", tid);
+        no_destroy = 0;
+        break;
+    case 12:
+        tag_str = tag_str_connect_not_shared;
+        fprintf(stderr,"Test %d, testing connected CIP, do not share connections, recreate and destroy tag each cycle.\n", tid);
+        no_destroy = 0;
+        break;
+    default:
+        fprintf(stderr,"Illegal test type, pick 0-2\n");
+        done = 1;
+        return NULL;
+        break;
     }
 
     if(no_destroy) {
@@ -253,11 +247,11 @@ void *test_cip(void *data)
 
         fprintf(stderr,"Test %d, iteration %d, got result %d with return code %s in %dms\n",tid, iteration, value, plc_tag_decode_error(rc), (int)(end-start));
 
-/*        if(iteration >= 100) {
-            iteration = 1;
-            sleep_ms(5000);
-        }
-*/
+        /*        if(iteration >= 100) {
+                    iteration = 1;
+                    sleep_ms(5000);
+                }
+        */
         iteration++;
     }
 
@@ -318,4 +312,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-

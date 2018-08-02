@@ -151,14 +151,13 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLCTAG_ERR_CREATE;
     int is_write = 0;
     uint32_t u_val;
     int32_t i_val;
     real32_t f_val;
     int i;
     int rc;
-    int64_t timeout;
 
     parse_args(argc, argv);
 
@@ -215,20 +214,14 @@ int main(int argc, char **argv)
     }
 
     /* create the tag */
-    tag = plc_tag_create(path);
+    tag = plc_tag_create(path, DATA_TIMEOUT);
 
-    printf("INFO: Got tag %p\n", (void *)tag);
+    printf("INFO: Got tag %d\n", tag);
 
-    if(!tag) {
-        printf("ERROR: error creating tag!\n");
+    if(tag < 0) {
+        printf("ERROR: error creating tag!  Error %s\n", plc_tag_decode_error(tag));
 
         return 0;
-    }
-
-    timeout = time_ms() + 500;
-
-    while(timeout>time_ms() && plc_tag_status(tag) == PLCTAG_STATUS_PENDING) {
-        sleep_ms(100);
     }
 
     rc = plc_tag_status(tag);
@@ -246,7 +239,7 @@ int main(int argc, char **argv)
         if(!is_write) {
             int index = 0;
 
-            printf("INFO: reading tag %p\n", (void *)tag);
+            printf("INFO: reading tag %d\n", tag);
 
             rc = plc_tag_read(tag, DATA_TIMEOUT);
 

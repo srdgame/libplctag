@@ -69,18 +69,13 @@ void *thread_func(void *data)
     int value;
     uint64_t start;
     uint64_t end;
-    plc_tag tag;
+    tag_id tag;
     int iterations = 2000+random_min_max(0,2);
 
     while(iterations>0) {
         int loops = 10+random_min_max(0,20);
 
-        tag = plc_tag_create(TAG_PATH);
-
-        /* let the connect succeed we hope */
-        while(plc_tag_status(tag) == PLCTAG_STATUS_PENDING) {
-            sleep_ms(100);
-        }
+        tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
 
         if(plc_tag_status(tag) != PLCTAG_STATUS_OK) {
             fprintf(stderr,"Thread %d Error creating tag: %s\n", tid, plc_tag_decode_error(plc_tag_status(tag)));
@@ -114,7 +109,7 @@ void *thread_func(void *data)
         }
 
         plc_tag_destroy(tag);
-        tag = NULL;
+        tag = PLCTAG_ERR_CREATE ;
 
         sleep_ms(100+random_min_max(0,100));
     }

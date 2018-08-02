@@ -187,6 +187,7 @@ plc_tag_p ab_tag_create(attr attribs)
 {
     ab_tag_p tag = AB_TAG_NULL;
     const char *path;
+    int rc = PLCTAG_STATUS_OK;
 //    int num_retries;
 //    int default_retry_interval;
 
@@ -198,14 +199,29 @@ plc_tag_p ab_tag_create(attr attribs)
      */
 
     tag = (ab_tag_p)rc_alloc(sizeof(struct ab_tag_t), (rc_cleanup_func)ab_tag_destroy);
-
     if(!tag) {
         pdebug(DEBUG_ERROR,"Unable to allocate memory for AB EIP tag!");
         return PLC_TAG_P_NULL;
     }
 
 
-    pdebug(DEBUG_DETAIL, "tag=%p", tag);
+    pdebug(DEBUG_DETAIL, "tag=%p", tag);    /* create tag mutex */
+
+    /* create the tag mutexes. */
+    rc = mutex_create(&tag->ext_mutex);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_ERROR, "Unable to create tag external mutex!");
+        rc_dec(tag);
+        return PLC_TAG_P_NULL;
+    }
+
+    rc = mutex_create(&tag->api_mutex);
+    if(rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_ERROR, "Unable to create tag API mutex!");
+        rc_dec(tag);
+        return PLC_TAG_P_NULL;
+    }
+
 
     /*
      * we got far enough to allocate memory, set the default vtable up
@@ -250,13 +266,13 @@ plc_tag_p ab_tag_create(attr attribs)
     }
 
     /* special features for Logix tags. */
-    if(tag->protocol_type == AB_PROTOCOL_LGX) {
-        /* default to requiring a connection. */
-        tag->needs_connection = attr_get_int(attribs,"use_connected_msg", 1);
-
-        /* default to allow packing, IF using connected mode. */
-        tag->allow_packing = attr_get_int(attribs, "allow_packing", tag->needs_connection);
-
+//    if(tag->protocol_type == AB_PROTOCOL_LGX) {
+//        /* default to requiring a connection. */
+//        tag->needs_connection = attr_get_int(attribs,"use_connected_msg", 1);
+//
+//        /* default to allow packing, IF using connected mode. */
+//        tag->allow_packing = attr_get_int(attribs, "allow_packing", tag->needs_connection);
+//
 //        if(attr_get_str(attribs,"read_group",NULL)) {
 //            tag->read_group = str_dup(attr_get_str(attribs,"read_group",NULL));
 //
@@ -268,7 +284,7 @@ plc_tag_p ab_tag_create(attr attribs)
 //
 //            insert_read_group_tag(tag);
 //        }
-    }
+//    }
 
     /* get the connection path, punt if there is not one and we have a Logix-class PLC. */
     path = attr_get_str(attribs,"path",NULL);
@@ -549,6 +565,10 @@ void ab_tag_destroy(ab_tag_p tag)
         mem_free(tag->data);
         tag->data = NULL;
     }
+
+    /* destroy the tag's mutexes */
+    mutex_destroy(&tag->ext_mutex);
+    mutex_destroy(&tag->api_mutex);
 
     pdebug(DEBUG_INFO,"Finished releasing all tag resources.");
 

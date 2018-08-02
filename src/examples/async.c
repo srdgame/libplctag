@@ -37,24 +37,26 @@
 
 int main()
 {
-    plc_tag tag[NUM_TAGS];
+    tag_id tag[NUM_TAGS];
     int rc;
     int i;
+    int done = 0;
 
     /* create the tags */
     for(i=0; i< NUM_TAGS; i++) {
         char tmp_tag_path[256] = {0,};
         snprintf_platform(tmp_tag_path, sizeof tmp_tag_path,TAG_PATH,i);
-        tag[i]  = plc_tag_create(tmp_tag_path);
+        tag[i]  = plc_tag_create(tmp_tag_path,0);
 
-        if(!tag[i]) {
-            fprintf(stderr,"Error: could not create tag %d\n",i);
+        if(tag[i] < 0) {
+            fprintf(stderr,"Error: could not create tag %d, got error %s\n",i, plc_tag_decode_error(tag[i]));
+            return 0;
         }
     }
 
     /* let the connect complete */
     fprintf(stderr,"Sleeping to let the connect complete.\n");
-    sleep_ms(1000);
+    sleep_ms(DATA_TIMEOUT);
 
     for(i=0; i < NUM_TAGS; i++) {
         /* called to update the status in the tag. */
@@ -76,6 +78,25 @@ int main()
     fprintf(stderr,"Sleeping to let the reads complete.\n");
     sleep_ms(2000);
 
+    done = 1;
+    do {
+        sleep_ms(10);
+
+        for(i=0; i < NUM_TAGS; i++) {
+            rc = plc_tag_status(tag[i]);
+
+            if(rc == PLCTAG_STATUS_PENDING) {
+                done = 0;
+            } else if(rc != PLCTAG_STATUS_OK) {
+                done = 1;
+                break;
+            }
+        }
+    } while(!done);
+
+    if(rc != PLCTAG_STATUS_OK) {
+        fprintf(stderr, "ERROR: Tag %d reported error %s while waiting for read!", i, plc_tag_decode_error(rc));
+    }
 
     /* get any data we can */
     for(i=0; i < NUM_TAGS; i++) {

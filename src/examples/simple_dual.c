@@ -37,14 +37,14 @@
 
 int main()
 {
-    plc_tag tag1 = PLC_TAG_NULL;
-    plc_tag tag2 = PLC_TAG_NULL;
+    tag_id tag1 = PLCTAG_ERR_CREATE;
+    tag_id tag2 = PLCTAG_ERR_CREATE;
     int rc1,rc2;
     int i;
 
     /* create the tag */
-    tag1 = plc_tag_create(TAG_PATH1);
-    tag2 = plc_tag_create(TAG_PATH2);
+    tag1 = plc_tag_create(TAG_PATH1, DATA_TIMEOUT);
+    tag2 = plc_tag_create(TAG_PATH2, DATA_TIMEOUT);
 
     /* everything OK? */
     if(!tag1) {

@@ -45,7 +45,7 @@
 
 
 /* global to cheat on passing it to threads. */
-plc_tag tag;
+tag_id tag;
 
 
 
@@ -127,18 +127,12 @@ int main(int argc, char **argv)
     }
 
     /* create the tag */
-    tag = plc_tag_create(TAG_PATH);
+    tag = plc_tag_create(TAG_PATH, DATA_TIMEOUT);
 
     /* everything OK? */
-    if(!tag) {
-        fprintf(stderr,"ERROR: Could not create tag!\n");
-
+    if(tag < 0) {
+        fprintf(stderr,"ERROR: Could not create tag!   Error %s\n", plc_tag_decode_error(tag));
         return 0;
-    }
-
-    /* let the connect succeed we hope */
-    while(plc_tag_status(tag) == PLCTAG_STATUS_PENDING) {
-        sleep_ms(100);
     }
 
     if(plc_tag_status(tag) != PLCTAG_STATUS_OK) {

@@ -1205,7 +1205,7 @@ int match_request_and_response(ab_request_p request, eip_cip_co_resp *response)
 
 void receive_response_unsafe(ab_session_p session, ab_request_p request)
 {
-    ab_tag_p tag = NULL;
+    pdebug(DEBUG_DETAIL,"Starting.");
 
     /*
      * We received a packet.  Modify the packet interval downword slightly
@@ -1225,8 +1225,8 @@ void receive_response_unsafe(ab_session_p session, ab_request_p request)
     //update_resend_samples(session, time_ms() - request->time_sent);
 
     /* set the packet ready for processing. */
-    pdebug(DEBUG_INFO, "got full packet of size %d", session->recv_offset);
-    pdebug_dump_bytes(DEBUG_INFO, session->recv_data, session->recv_offset);
+//    pdebug(DEBUG_INFO, "got full packet of size %d", session->recv_offset);
+//    pdebug_dump_bytes(DEBUG_INFO, session->recv_data, session->recv_offset);
 
     /* copy the data from the session's buffer */
     mem_copy(request->data, session->recv_data, session->recv_offset);
@@ -1237,13 +1237,13 @@ void receive_response_unsafe(ab_session_p session, ab_request_p request)
     request->send_request = 0;
     request->recv_in_progress = 0;
 
-    /* call the tag tickler function. */
-    tag = request_get_tag(request);
-    if(tag) {
-        pdebug(DEBUG_DETAIL, "Calling tickler.");
-        tag->vtable->tickler((plc_tag_p)tag);
-        rc_dec(tag);
-    }
+//    /* call the tag tickler function. */
+//    tag = request_get_tag(request);
+//    if(tag) {
+//        pdebug(DEBUG_DETAIL, "Calling tickler.");
+//        tag->vtable->tickler((plc_tag_p)tag);
+//        rc_dec(tag);
+//    }
 
     /* clear the request from the session as it is done. Note we hold the mutex here.
      *
@@ -1251,6 +1251,8 @@ void receive_response_unsafe(ab_session_p session, ab_request_p request)
      * destroy the request.
      */
     session_remove_request_unsafe(session, request);
+    
+    pdebug(DEBUG_DETAIL, "Done.");
 }
 
 

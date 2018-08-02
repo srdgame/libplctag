@@ -75,7 +75,8 @@ typedef struct tag_vtable_t *tag_vtable_p;
  */
 
 #define TAG_BASE_STRUCT tag_vtable_p vtable; \
-                        mutex_p mut; \
+                        mutex_p ext_mutex; \
+                        mutex_p api_mutex; \
                         int status; \
                         int endian; \
                         int tag_id; \
@@ -98,9 +99,9 @@ struct plc_tag_t {
 /* the following may need to be used where the tag is already mapped or is not yet mapped */
 extern int lib_init(void);
 extern void lib_teardown(void);
-extern int plc_tag_abort_mapped(plc_tag_p tag);
-extern int plc_tag_destroy_mapped(plc_tag_p tag);
-extern int plc_tag_status_mapped(plc_tag_p tag);
+//extern int plc_tag_abort_mapped(plc_tag_p tag);
+//extern int plc_tag_destroy_mapped(plc_tag_p tag);
+//extern int plc_tag_status_mapped(plc_tag_p tag);
 
 
 

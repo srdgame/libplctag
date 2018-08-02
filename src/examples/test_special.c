@@ -23,20 +23,20 @@
 #include "../lib/libplctag.h"
 #include "utils.h"
 
-
+#define DATA_TIMEOUT (1000)
 
 void test_version(void)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLCTAG_ERR_CREATE;
     int i;
     char ver[16] = {0,};
 
     fprintf(stderr,"Testing version tag.\n");
 
-    tag = plc_tag_create("make=system&family=library&name=version&debug=4");
+    tag = plc_tag_create("make=system&family=library&name=version&debug=4", DATA_TIMEOUT);
 
-    if(!tag) {
-        fprintf(stderr,"ERROR: Could not create tag!\n");
+    if(tag < 0) {
+        fprintf(stderr,"ERROR: Could not create tag!  Error %s\n", plc_tag_decode_error(tag));
         return;
     }
 
@@ -55,15 +55,15 @@ void test_version(void)
 
 void test_debug(void)
 {
-    plc_tag tag = PLC_TAG_NULL;
+    tag_id tag = PLCTAG_ERR_CREATE;
     int old_debug, new_debug;
 
     fprintf(stderr,"Testing debug tag.\n");
 
-    tag = plc_tag_create("make=system&family=library&name=debug&debug=4");
+    tag = plc_tag_create("make=system&family=library&name=debug&debug=4", DATA_TIMEOUT);
 
-    if(!tag) {
-        fprintf(stderr,"ERROR: Could not create tag!\n");
+    if(tag < 0) {
+        fprintf(stderr,"ERROR: Could not create tag!  Error %s\n", plc_tag_decode_error(tag));
         return;
     }
 

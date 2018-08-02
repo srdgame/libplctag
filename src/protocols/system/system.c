@@ -115,6 +115,10 @@ static void system_tag_destroy(plc_tag_p ptag)
         return;
     }
 
+    /* destroy the tag's mutexes */
+    mutex_destroy(&tag->ext_mutex);
+    mutex_destroy(&tag->api_mutex);
+
     //mem_free(tag);
 
     return;
