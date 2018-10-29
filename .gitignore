@@ -50,3 +50,8 @@ main
 .vs/VSWorkspaceState.json
 src/lib/version.c
 temp.c
+#ctags/premake5/bin files
+tags
+*.so
+build/
+bin/
