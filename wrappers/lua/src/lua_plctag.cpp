@@ -89,6 +89,9 @@ namespace lua_module {
 		module.set_function("sleep", sleep_ms);
 		module.set_function("time", time_ms);
 
+		// Sol2 will wrap the NULL to nil automatically
+		//module.set("null", PLC_TAG_NULL);
+
 		return module;
 	}
 }
