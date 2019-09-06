@@ -15,8 +15,8 @@ project "plctag"
 		"/home/cch/mycode/skynet/3rd/lua/",
 		--"/usr/include/lua5.3",
 		".",
-		"../../src",
-		"../../src/platform/linux",
+		"../../",
+		"../../platform/linux",
 	}
 	files { 
 		"./src/**.hpp",
@@ -46,20 +46,20 @@ project "plctag-static"
 	targetdir "bin/%{cfg.buildcfg}"
 
 	includedirs { 
-		"../../src/",
-		"../../src/platform/linux",
-		"../../src/protocols",
-		"../../src/utils",
+		"../../",
+		"../../platform/linux",
+		"../../protocols",
+		"../../utils",
 	}
 	files { 
-		"../../src/lib/**.h",
-		"../../src/lib/**.c",
-		"../../src/platform/linux/**.h",
-		"../../src/platform/linux/**.c",
-		"../../src/protocols/**.h",
-		"../../src/protocols/**.c",
-		"../../src/util/**.h",
-		"../../src/util/**.c",
+		"../../lib/**.h",
+		"../../lib/**.c",
+		"../../platform/linux/**.h",
+		"../../platform/linux/**.c",
+		"../../protocols/**.h",
+		"../../protocols/**.c",
+		"../../util/**.h",
+		"../../util/**.c",
 	}
 
 	buildoptions { '-Wpedantic', '-pedantic', '-pedantic-errors', "-fPIC" }
