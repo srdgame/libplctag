@@ -87,6 +87,8 @@ namespace lua_module {
 		module.set_function("set_uint8", plc_tag_set_uint8 );
 		module.set_function("get_int8", plc_tag_get_int8 );
 		module.set_function("set_int8", plc_tag_set_int8 );
+		module.set_function("get_float64", plc_tag_get_float64 );
+		module.set_function("set_float64", plc_tag_set_float64 );
 		module.set_function("get_float32", plc_tag_get_float32 );
 		module.set_function("set_float32", plc_tag_set_float32 );
 
