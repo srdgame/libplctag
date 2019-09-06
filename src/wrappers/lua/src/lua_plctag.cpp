@@ -3,7 +3,7 @@ extern "C" {
 #include "platform.h"
 }
 #include "lib/libplctag.h"
-#include "lib/libplctag_tag.h"
+#include "lib/tag.h"
 
 #define SOL_CHECK_ARGUMENTS 1
 #include "sol/sol.hpp"

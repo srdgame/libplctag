@@ -1,7 +1,6 @@
 -- A solution
 workspace "lua-plctag"
 	configurations { "Debug", "Release"}
-	location "build"
 
 project "plctag"
 	kind "SharedLib"

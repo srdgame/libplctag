@@ -55,3 +55,4 @@ tags
 *.so
 build/
 bin/
+src/wrappers/lua/Makefile
