@@ -56,7 +56,8 @@ namespace lua_module {
 			"TOO_SMALL", PLCTAG_ERR_TOO_SMALL,
 			"UNSUPPORTED", PLCTAG_ERR_UNSUPPORTED,
 			"WINSOCK", PLCTAG_ERR_WINSOCK,
-			"WRITE", PLCTAG_ERR_WRITE
+			"WRITE", PLCTAG_ERR_WRITE,
+			"PARTIAL", PLCTAG_ERR_PARTIAL
 		);
 
 		module.set_function("decode_error", plc_tag_decode_error );
@@ -70,6 +71,10 @@ namespace lua_module {
 		module.set_function("write", plc_tag_write );
 		module.set_function("get_size", plc_tag_get_size );
 
+		module.set_function("get_uint64", plc_tag_get_uint64 );
+		module.set_function("set_uint64", plc_tag_set_uint64 );
+		module.set_function("get_int64", plc_tag_get_int64 );
+		module.set_function("set_int64", plc_tag_set_int64 );
 		module.set_function("get_uint32", plc_tag_get_uint32 );
 		module.set_function("set_uint32", plc_tag_set_uint32 );
 		module.set_function("get_int32", plc_tag_get_int32 );
