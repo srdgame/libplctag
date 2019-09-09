@@ -8,6 +8,9 @@ extern "C" {
 #define SOL_CHECK_ARGUMENTS 1
 #include "sol/sol.hpp"
 
+std::string plc_tag_get_string(int32_t id, int offset);
+int plc_tag_set_string(int32_t id, int offset, std::string val);
+
 namespace lua_module {
 	sol::table open_module(sol::this_state L) {
 		sol::state_view lua(L);
@@ -91,6 +94,9 @@ namespace lua_module {
 		module.set_function("set_float64", plc_tag_set_float64 );
 		module.set_function("get_float32", plc_tag_get_float32 );
 		module.set_function("set_float32", plc_tag_set_float32 );
+
+		module.set_function("get_string", plc_tag_get_string );
+		module.set_function("set_string", plc_tag_set_string );
 
 		//utils
 		module.set_function("sleep", sleep_ms);
