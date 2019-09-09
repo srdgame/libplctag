@@ -50,6 +50,9 @@ main
 .vs/VSWorkspaceState.json
 src/lib/version.c
 temp.c
+/.vs/libplctag/v16/Browse.VC.db
+/.vs/libplctag/v16/Browse.VC.opendb
+/out/build/x64-Debug
 #ctags/premake5/bin files
 tags
 *.so
