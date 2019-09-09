@@ -8,8 +8,11 @@ extern "C" {
 #define SOL_CHECK_ARGUMENTS 1
 #include "sol/sol.hpp"
 
+bool plc_tag_get_bool(int32_t id, int offset);
+int plc_tag_set_bool(int32_t id, int offset, bool val);
+
 std::string plc_tag_get_string(int32_t id, int offset);
-int plc_tag_set_string(int32_t id, int offset, std::string val);
+int plc_tag_set_string(int32_t id, int offset, const std::string& val);
 
 namespace lua_module {
 	sol::table open_module(sol::this_state L) {
