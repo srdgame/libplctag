@@ -40,6 +40,33 @@ project "plctag"
 		defines { "NDEBUG" }
 		optimize "On"
 
+project "lgx_sim"
+	kind "ConsoleApp"
+	language "C"
+	location "build/lgx_sim"
+	targetdir "bin/%{cfg.buildcfg}"
+	dependson { "plctag-static" }
+
+	includedirs {
+		".",
+		"../../",
+		"../../platform/linux",
+	}
+	files {
+		"../../tests/lgx_sim/**.h",
+		"../../tests/lgx_sim/**.c",
+	}
+
+	links { "pthread", "plctag-static" }
+
+	filter "configurations:Debug"
+		defines { "DEBUG" }
+		symbols "On"
+
+	filter "configurations:Release"
+		defines { "NDEBUG" }
+		optimize "On"
+
 project "plctag-static"
 	kind "StaticLib"
 	language "C++"

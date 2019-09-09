@@ -1,7 +1,7 @@
 local plctag = require 'plctag'
 
-local path_fmt = "protocol=ab_eip&gateway=10.206.1.27&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=pcomm_test_dint_array[%d]"
---local path_fmt = "protocol=ab_eip&gateway=127.0.0.1&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=pcomm_test_dint_array[%d]"
+--local path_fmt = "protocol=ab_eip&gateway=10.206.1.27&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=pcomm_test_dint_array[%d]"
+local path_fmt = "protocol=ab_eip&gateway=127.0.0.1&path=1,0&cpu=LGX&elem_size=4&elem_count=1&name=pcomm_test_dint_array[%d]"
 local num_tags = 150
 local data_timeout = 5000
 
@@ -11,7 +11,7 @@ local function test_async()
 	for i = 0, num_tags - 1 do
 		local path = string.format(path_fmt, i)
 		print(string.format('create tag %d: %s', i, path))
-		local tag = plctag.create(path)
+		local tag = plctag.create(path, 5000)
 		if not tag then
 			print(string.format("Error: cloud not create tag %d", i))
 			return
@@ -27,7 +27,7 @@ local function test_async()
 	plctag.sleep(1000)
 
 	for _, tag in ipairs(tags) do
-		local status = plctag.status(tags[i])
+		local status = plctag.status(tag)
 		if status ~= plctag.Status.OK then
 			print(string.format('Error: status tag error %d: %s', status, plctag.decode_error(status)))
 		end

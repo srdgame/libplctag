@@ -7,7 +7,7 @@ local data_timeout = 5000
 
 
 local function test_plc5()
-	local tag = plctag.create(path)
+	local tag = plctag.create(path, data_timeout)
 
 	while plctag.Status.PENDING == plctag.status(tag) do
 		plctag.sleep(100)
