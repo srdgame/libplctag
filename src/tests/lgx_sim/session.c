@@ -38,7 +38,7 @@ void *session_handler(void *session_arg)
         ssize_t rc = read(session->sock, session->buf, BUFFER_LEN);
 
         if(rc < 0) {
-            log("read() failed!\n");
+            log("read() failed! rc: %d %d\n", rc, BUFFER_LEN);
             break;
         }
 
