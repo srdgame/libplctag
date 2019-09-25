@@ -77,6 +77,8 @@ namespace lua_module {
 		module.set_function("write", plc_tag_write );
 		module.set_function("get_size", plc_tag_get_size );
 
+		module.set_function("get_bool", plc_tag_get_bool );
+		module.set_function("set_bool", plc_tag_set_bool );
 		module.set_function("get_uint64", plc_tag_get_uint64 );
 		module.set_function("set_uint64", plc_tag_set_uint64 );
 		module.set_function("get_int64", plc_tag_get_int64 );
