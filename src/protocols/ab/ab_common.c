@@ -84,6 +84,8 @@ static int default_status(plc_tag_p tag);
 static int default_tickler(plc_tag_p tag);
 static int default_write(plc_tag_p tag);
 
+
+
 /* vtables for different kinds of tags */
 struct tag_vtable_t default_vtable = { default_abort, default_read, default_status, default_tickler, default_write };
 
@@ -460,11 +462,11 @@ int get_tag_data_type(ab_tag_p tag, attr attribs)
             /* just for Logix, check for tag listing */
             if(tag->protocol_type == AB_PROTOCOL_LGX) {
                 const char *tag_name = attr_get_str(attribs, "name", NULL);
-                if(tag_name && str_cmp_i("@tags",tag_name) == 0) {
-                    tag->tag_list = 1;
-                    tag->elem_type = AB_TYPE_TAG_ENTRY;
-                    tag->elem_count = 1;  /* place holder */
-                    tag->elem_size = 1;
+                int tag_listing_rc = setup_tag_listing(tag, tag_name);
+
+                if(tag_listing_rc == PLCTAG_ERR_BAD_PARAM) {
+                    pdebug(DEBUG_WARN, "Tag listing request is malformed!");
+                    return PLCTAG_ERR_BAD_PARAM;
                 }
             }
         }
@@ -655,32 +657,44 @@ void ab_tag_destroy(ab_tag_p tag)
 
 
 
-int check_cpu(ab_tag_p tag, attr attribs)
+int get_plc_type(attr attribs)
 {
-    const char* cpu_type = attr_get_str(attribs, "cpu", "NONE");
+    const char *cpu_type = attr_get_str(attribs, "plc", attr_get_str(attribs, "cpu", "NONE"));
 
-    if (!str_cmp_i(cpu_type, "plc") || !str_cmp_i(cpu_type, "plc5")) {
-        tag->protocol_type = AB_PROTOCOL_PLC;
-    } else if (!str_cmp_i(cpu_type, "slc") || !str_cmp_i(cpu_type, "slc500")) {
-        tag->protocol_type = AB_PROTOCOL_SLC;
-    } else if (!str_cmp_i(cpu_type, "lgxpccc") || !str_cmp_i(cpu_type, "logixpccc") || !str_cmp_i(cpu_type, "lgxplc5") ||
-               !str_cmp_i(cpu_type, "lgx-pccc") || !str_cmp_i(cpu_type, "logix-pccc") || !str_cmp_i(cpu_type, "lgx-plc5")) {
-        tag->protocol_type = AB_PROTOCOL_LGX_PCCC;
+    if (!str_cmp_i(cpu_type, "plc") || !str_cmp_i(cpu_type, "plc5") || !str_cmp_i(cpu_type, "slc") ||
+            !str_cmp_i(cpu_type, "slc500")) {
+        return AB_PROTOCOL_PLC;
+    } else if (!str_cmp_i(cpu_type, "lgxpccc") || !str_cmp_i(cpu_type, "logixpccc") || !str_cmp_i(cpu_type, "lgxplc5") || !str_cmp_i(cpu_type, "logixplc5") ||
+               !str_cmp_i(cpu_type, "lgx-pccc") || !str_cmp_i(cpu_type, "logix-pccc") || !str_cmp_i(cpu_type, "lgx-plc5") || !str_cmp_i(cpu_type, "logix-plc5")) {
+        return AB_PROTOCOL_LGX_PCCC;
     } else if (!str_cmp_i(cpu_type, "micrologix800") || !str_cmp_i(cpu_type, "mlgx800") || !str_cmp_i(cpu_type, "micro800")) {
-        tag->protocol_type = AB_PROTOCOL_MLGX800;
+        return AB_PROTOCOL_MLGX800;
     } else if (!str_cmp_i(cpu_type, "micrologix") || !str_cmp_i(cpu_type, "mlgx")) {
-        tag->protocol_type = AB_PROTOCOL_MLGX;
+        return AB_PROTOCOL_MLGX;
     } else if (!str_cmp_i(cpu_type, "compactlogix") || !str_cmp_i(cpu_type, "clgx") || !str_cmp_i(cpu_type, "lgx") ||
                !str_cmp_i(cpu_type, "controllogix") || !str_cmp_i(cpu_type, "contrologix") ||
-               !str_cmp_i(cpu_type, "flexlogix") || !str_cmp_i(cpu_type, "flgx")) {
-        tag->protocol_type = AB_PROTOCOL_LGX;
+               !str_cmp_i(cpu_type, "logix")) {
+        return AB_PROTOCOL_LGX;
     } else {
         pdebug(DEBUG_WARN, "Unsupported device type: %s", cpu_type);
 
+        return AB_PROTOCOL_NONE;
+    }
+}
+
+
+
+int check_cpu(ab_tag_p tag, attr attribs)
+{
+    int result = get_plc_type(attribs);
+
+    if(result != AB_PROTOCOL_NONE) {
+        tag->protocol_type = result;
+        return PLCTAG_STATUS_OK;
+    } else {
+        tag->protocol_type = result;
         return PLCTAG_ERR_BAD_DEVICE;
     }
-
-    return PLCTAG_STATUS_OK;
 }
 
 int check_tag_name(ab_tag_p tag, const char* name)
