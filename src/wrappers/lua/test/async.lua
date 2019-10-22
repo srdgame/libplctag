@@ -45,7 +45,7 @@ local function test_async()
 	plctag.sleep(2000)
 
 	for i, tag in ipairs(tags) do
-		local rc = plctag.read(tag, 0)
+		local rc = plctag.status(tag)
 		if rc == plctag.Status.PENDING then
 			print(string.format("Tag %d is still pending", i))
 		elseif rc ~= plctag.Status.OK then
