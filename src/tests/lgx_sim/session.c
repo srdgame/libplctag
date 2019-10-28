@@ -130,7 +130,7 @@ void process_unconnected_data(session_context *session)
         break;
 
     default:
-        log("process_unconnected_data() unsupported service code %x!\n", header->service_code);
+        log("process_unconnected_data() unsupported service code %02x!\n", header->service_code);
         print_buf(session->buf,sizeof(eip_header) + header->length);
 
         break;
@@ -276,7 +276,7 @@ void process_connected_data(session_context *session)
 
 
     default:
-        log("process_connected_data() unsupported service code %x!\n", header->service_code);
+        log("process_connected_data() unsupported service code %02x!\n", header->service_code);
         print_buf(session->buf,sizeof(eip_header) + header->length);
 
         break;

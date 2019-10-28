@@ -10,7 +10,7 @@ size_t num_tags = 0;
 
 void init_tags()
 {
-    num_tags = 8;
+    num_tags = 9;
 
     tags = (tag_data *)calloc(num_tags, sizeof(tag_data));
 
@@ -69,6 +69,13 @@ void init_tags()
     tags[7].elem_count = 10;
     tags[7].elem_size = 8;
     tags[7].data = (uint8_t *)calloc(tags[7].elem_size, tags[7].elem_count);
+
+    tags[8].name = "TestStringArray";
+    tags[8].data_type[0] = 0xd0;
+    tags[8].data_type[1] = 0x00;
+    tags[8].elem_count = 10;
+    tags[8].elem_size = 8;
+    tags[8].data = (uint8_t *)calloc(tags[8].elem_size, tags[8].elem_count * 88);
 
 }
 
