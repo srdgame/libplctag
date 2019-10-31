@@ -752,9 +752,6 @@ struct sock_t {
 
 
 #define MAX_IPS (8)
-#ifndef INVALID_SOCKET
-#define INVALID_SOCKET -1
-#endif
 
 extern int socket_create(sock_p *s)
 {
@@ -766,7 +763,6 @@ extern int socket_create(sock_p *s)
     }
 
     *s = (sock_p)mem_alloc(sizeof(struct sock_t));
-    (*s)->fd = INVALID_SOCKET;
 
     if(! *s) {
         pdebug(DEBUG_ERROR, "Failed to allocate memory for socket.");
@@ -940,6 +936,7 @@ extern int socket_connect_tcp(sock_p s, const char *host, int port)
     /* save the values */
     s->fd = fd;
     s->port = port;
+    s->is_open = 1;
 
     pdebug(DEBUG_DETAIL, "Done.");
 
@@ -955,6 +952,11 @@ extern int socket_read(sock_p s, uint8_t *buf, int size)
 
     if(!s || !buf) {
         return PLCTAG_ERR_NULL_PTR;
+    }
+
+    if(!s->is_open) {
+        pdebug(DEBUG_WARN, "Socket is not open!");
+        return PLCTAG_ERR_READ;
     }
 
     /* The socket is non-blocking. */
@@ -979,6 +981,11 @@ extern int socket_write(sock_p s, uint8_t *buf, int size)
 
     if(!s || !buf) {
         return PLCTAG_ERR_NULL_PTR;
+    }
+
+    if(!s->is_open) {
+        pdebug(DEBUG_WARN, "Socket is not open!");
+        return PLCTAG_ERR_WRITE;
     }
 
     /* The socket is non-blocking. */
@@ -1006,15 +1013,22 @@ extern int socket_write(sock_p s, uint8_t *buf, int size)
 
 extern int socket_close(sock_p s)
 {
-    /*pdebug(1,"Starting.");*/
-
-    if(!s)
+    if(!s) {
         return PLCTAG_ERR_NULL_PTR;
+    }
 
-    if(s->fd == INVALID_SOCKET)
-		return PLCTAG_STATUS_OK;
+    if(!s->is_open) {
+        return PLCTAG_STATUS_OK;
+    }
 
-    return close(s->fd);
+    if(!close(s->fd)) {
+        return PLCTAG_ERR_CLOSE;
+    }
+
+    s->fd = 0;
+    s->is_open = 0;
+
+    return PLCTAG_STATUS_OK;
 }
 
 
