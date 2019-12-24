@@ -36,7 +36,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin_dist)
 # the project is version 2.0
 set (libplctag_VERSION_MAJOR 2)
 set (libplctag_VERSION_MINOR 0)
-set (libplctag_VERSION_PATCH 27)
+set (libplctag_VERSION_PATCH 28)
 set (VERSION "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}.${libplctag_VERSION_PATCH}")
 
 # we need threads
@@ -216,6 +216,8 @@ if (UNIX)
 
 
     set ( example_PROGRAMS async
+                           async_stress
+                           busy_test
                            data_dumper
                            list_tags
                            multithread

@@ -211,6 +211,13 @@ int tag_read_start(ab_tag_p tag)
 
     pdebug(DEBUG_INFO, "Starting");
 
+    if(tag->read_in_progress || tag->write_in_progress) {
+        pdebug(DEBUG_WARN, "Read or write operation already in flight!");
+        return PLCTAG_ERR_BUSY;
+    }
+
+    tag->read_in_progress = 1;
+
     /* What is the overhead in the _response_ */
     overhead =   1  /* pccc command */
                  +1  /* pccc status */
@@ -219,11 +226,13 @@ int tag_read_start(ab_tag_p tag)
     data_per_packet = session_get_max_payload(tag->session) - overhead;
 
     if(data_per_packet <= 0) {
+        tag->read_in_progress = 0;
         pdebug(DEBUG_WARN, "Unable to send request.  Packet overhead, %d bytes, is too large for packet, %d bytes!", overhead, session_get_max_payload(tag->session));
         return PLCTAG_ERR_TOO_LARGE;
     }
 
     if(data_per_packet < tag->size) {
+        tag->read_in_progress = 0;
         pdebug(DEBUG_DETAIL, "Unable to send request: Tag size is %d, write overhead is %d, and write data per packet is %d!", tag->size, overhead, data_per_packet);
         return PLCTAG_ERR_TOO_LARGE;
     }
@@ -231,6 +240,7 @@ int tag_read_start(ab_tag_p tag)
     /* get a request buffer */
     rc = session_create_request(tag->session, tag->tag_id, &req);
     if(rc != PLCTAG_STATUS_OK) {
+        tag->read_in_progress = 0;
         pdebug(DEBUG_ERROR, "Unable to get new request.  rc=%d", rc);
         return rc;
     }
@@ -282,6 +292,7 @@ int tag_read_start(ab_tag_p tag)
     rc = session_add_request(tag->session, req);
 
     if(rc != PLCTAG_STATUS_OK) {
+        tag->read_in_progress = 0;
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
         req->abort_request = 1;
         tag->req = rc_dec(req);
@@ -290,8 +301,7 @@ int tag_read_start(ab_tag_p tag)
 
     /* save the request for later */
     tag->req = req;
-    tag->read_in_progress = 1;
-    tag->status = PLCTAG_STATUS_PENDING;
+//    tag->status = PLCTAG_STATUS_PENDING;
 
     /* the read is now pending */
     pdebug(DEBUG_INFO, "Done.");
@@ -318,6 +328,13 @@ int tag_write_start(ab_tag_p tag)
 
     pdebug(DEBUG_INFO, "Starting");
 
+    if(tag->read_in_progress || tag->write_in_progress) {
+        pdebug(DEBUG_WARN, "Read or write operation already in flight!");
+        return PLCTAG_ERR_BUSY;
+    }
+
+    tag->write_in_progress = 1;
+
     /* how many packets will we need? How much overhead? */
     overhead = 2        /* size of sequence num */
                +8        /* DH+ routing */
@@ -333,11 +350,13 @@ int tag_write_start(ab_tag_p tag)
     data_per_packet = session_get_max_payload(tag->session) - overhead;
 
     if(data_per_packet <= 0) {
+        tag->write_in_progress = 0;
         pdebug(DEBUG_WARN, "Unable to send request.  Packet overhead, %d bytes, is too large for packet, %d bytes!", overhead, session_get_max_payload(tag->session));
         return PLCTAG_ERR_TOO_LARGE;
     }
 
     if(data_per_packet < tag->size) {
+        tag->write_in_progress = 0;
         pdebug(DEBUG_WARN, "PCCC requests cannot be fragmented.  Too much data requested.");
         return PLCTAG_ERR_TOO_LARGE;
     }
@@ -346,6 +365,7 @@ int tag_write_start(ab_tag_p tag)
     rc = session_create_request(tag->session, tag->tag_id, &req);
 
     if(rc != PLCTAG_STATUS_OK) {
+        tag->write_in_progress = 0;
         pdebug(DEBUG_ERROR, "Unable to get new request.  rc=%d", rc);
         return rc;
     }
@@ -399,8 +419,8 @@ int tag_write_start(ab_tag_p tag)
     rc = session_add_request(tag->session, req);
 
     if(rc != PLCTAG_STATUS_OK) {
+        tag->write_in_progress = 0;
         pdebug(DEBUG_ERROR, "Unable to add request to session! rc=%d", rc);
-//        request_release(req);
         req->abort_request = 1;
         tag->req = rc_dec(req);
         return rc;
@@ -408,8 +428,7 @@ int tag_write_start(ab_tag_p tag)
 
     /* save the request for later */
     tag->req = req;
-    tag->write_in_progress = 1;
-    tag->status = PLCTAG_STATUS_PENDING;
+//    tag->status = PLCTAG_STATUS_PENDING;
 
     pdebug(DEBUG_INFO, "Done.");
 
@@ -465,6 +484,8 @@ static int check_read_status(ab_tag_p tag)
     if(rc != PLCTAG_STATUS_OK) {
         if(rc_is_error(rc)) {
             /* the request is dead, from session side. */
+            tag->read_in_progress = 0;
+            tag->offset = 0;
             tag->req = rc_dec(tag->req);
         }
 
@@ -496,7 +517,7 @@ static int check_read_status(ab_tag_p tag)
         }
 
         if(resp->pccc_status != AB_EIP_OK) {
-            pdebug(DEBUG_WARN, "PCCC command failed, response code: %d - %s", *data, pccc_decode_error(*data));
+            pdebug(DEBUG_WARN, "PCCC command failed, response code: %d - %s", resp->pccc_status, pccc_decode_error(&resp->pccc_status));
             rc = PLCTAG_ERR_REMOTE_ERR;
             break;
         }
@@ -534,7 +555,7 @@ static int check_read_status(ab_tag_p tag)
 static int check_write_status(ab_tag_p tag)
 {
     pccc_dhp_co_resp *pccc_resp;
-    uint8_t *data = NULL;
+//    uint8_t *data = NULL;
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_SPEW, "Starting.");
@@ -573,6 +594,9 @@ static int check_write_status(ab_tag_p tag)
     if(rc != PLCTAG_STATUS_OK) {
         if(rc_is_error(rc)) {
             /* the request is dead, from session side. */
+            tag->write_in_progress = 0;
+            tag->offset = 0;
+
             tag->req = rc_dec(tag->req);
         }
 
@@ -584,7 +608,7 @@ static int check_write_status(ab_tag_p tag)
     pccc_resp = (pccc_dhp_co_resp *)(tag->req->data);
 
     /* point data just past the header */
-    data = (uint8_t *)pccc_resp + sizeof(*pccc_resp);
+//    data = (uint8_t *)pccc_resp + sizeof(*pccc_resp);
 
     /* fake exception */
     do {
@@ -602,7 +626,7 @@ static int check_write_status(ab_tag_p tag)
         }
 
         if(pccc_resp->pccc_status != AB_EIP_OK) {
-            pdebug(DEBUG_WARN, "PCCC command failed, response code: %d - %s", pccc_resp->pccc_status, pccc_decode_error(*data));
+            pdebug(DEBUG_WARN, "PCCC command failed, response code: %d - %s", pccc_resp->pccc_status, pccc_decode_error(&pccc_resp->pccc_status));
             rc = PLCTAG_ERR_REMOTE_ERR;
             break;
         }

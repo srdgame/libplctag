@@ -27,6 +27,7 @@
 #include <util/debug.h>
 #include <platform.h>
 #include <lib/libplctag.h>
+#include <lib/version.h>
 
 
 
@@ -45,6 +46,12 @@ static volatile uint32_t thread_num = 1;
 
 static THREAD_LOCAL uint32_t this_thread_num = 0;
 static THREAD_LOCAL int tag_id = 0;
+
+
+/* only output the version once */
+static volatile lock_t printed_version = LOCK_INIT;
+
+
 
 extern int set_debug_level(int level)
 {
@@ -99,7 +106,7 @@ static int make_prefix(char *prefix_buf, int prefix_buf_size)
 
     /* get the time parts */
     epoch_ms = time_ms();
-    epoch = epoch_ms/1000;
+    epoch = (time_t)(epoch_ms/1000);
     remainder_ms = (int)(epoch_ms % 1000);
 
     /* FIXME - should capture error return! */
@@ -133,6 +140,15 @@ extern void pdebug_impl(const char *func, int line_num, int debug_level, const c
     prefix_size = make_prefix(prefix,(int)sizeof(prefix));  /* don't exceed a size that int can express! */
     if(prefix_size <= 0) {
         return;
+    }
+
+    /* print only once */
+    /* FIXME - this may not be safe. */
+    if(!printed_version && debug_level >= DEBUG_INFO) {
+        if(lock_acquire_try((lock_t*)&printed_version)) {
+            /* create the output string template */
+            fprintf(stderr,"%s INFO libplctag version %s\n",prefix, VERSION);
+        }
     }
 
     /* create the output string template */
