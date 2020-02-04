@@ -435,7 +435,6 @@ ab_session_p find_session_by_host_unsafe(const char *host, const char *path)
 
 ab_session_p session_create_unsafe(const char *host, int gw_port, const char *path, int plc_type, int use_connected_msg)
 {
-    static volatile uint32_t srand_setup = 0;
     static volatile uint32_t connection_id = 0;
 
     int rc = PLCTAG_STATUS_OK;
@@ -486,11 +485,6 @@ ab_session_p session_create_unsafe(const char *host, int gw_port, const char *pa
     session->conn_serial_number = (uint16_t)(intptr_t)(session);
 
     /* check for ID set up. This does not need to be thread safe since we just need a random value. */
-    if(srand_setup == 0) {
-        srand((unsigned int)time_ms());
-        srand_setup = 1;
-    }
-
     if(connection_id == 0) {
         connection_id = (uint32_t)rand();
     }
@@ -727,7 +721,6 @@ int session_close_socket(ab_session_p session)
 void session_destroy(void *session_arg)
 {
     ab_session_p session = session_arg;
-//    ab_request_p req = NULL;
 
     pdebug(DEBUG_INFO, "Starting.");
 
@@ -742,45 +735,54 @@ void session_destroy(void *session_arg)
 
     pdebug(DEBUG_INFO, "Session sent %"PRId64" packets.", session->packet_count);
 
-    /* terminate the thread first. */
+    /* terminate the session thread first. */
     session->terminating = 1;
 
     /* get rid of the handler thread. */
-    if(session->handler_thread) {
+    if (session->handler_thread) {
+        /* this cannot be guarded by the mutex since the session thread also locks it. */
         thread_join(session->handler_thread);
-        thread_destroy(&(session->handler_thread));
-        session->handler_thread = NULL;
+
+        /* FIXME - is this critical block needed? */
+        critical_block(session->mutex) {
+            thread_destroy(&(session->handler_thread));
+            session->handler_thread = NULL;
+        }
     }
 
-    /* close off the connection if is one. This helps the PLC clean up. */
-    if(session->targ_connection_id) {
-        /*
-         * we do not want the internal loop to immediately
-         * return, so set the flag like we are not terminating.
-         * There is still a timeout that applies.
-         */
-        session->terminating = 0;
-        perform_forward_close(session);
-        session->terminating = 1;
-    }
 
-    /* try to be nice and un-register the session */
-    if(session->session_handle) {
-        session_unregister(session);
-    }
-
-    if(session->sock) {
-        session_close_socket(session);
-    }
-
-    /* release all the requests that are in the queue. */
-    if(session->requests) {
-        for(int i=0; i < vector_length(session->requests); i++) {
-            rc_dec(vector_get(session->requests, i));
+    /* this needs to be handled in the mutex to prevent double frees due to queued requests. */
+    critical_block(session->mutex) {
+        /* close off the connection if is one. This helps the PLC clean up. */
+        if (session->targ_connection_id) {
+            /*
+             * we do not want the internal loop to immediately
+             * return, so set the flag like we are not terminating.
+             * There is still a timeout that applies.
+             */
+            session->terminating = 0;
+            perform_forward_close(session);
+            session->terminating = 1;
         }
 
-        vector_destroy(session->requests);
-        session->requests = NULL;
+        /* try to be nice and un-register the session */
+        if (session->session_handle) {
+            session_unregister(session);
+        }
+
+        if (session->sock) {
+            session_close_socket(session);
+        }
+
+        /* release all the requests that are in the queue. */
+        if (session->requests) {
+            for (int i = 0; i < vector_length(session->requests); i++) {
+                rc_dec(vector_get(session->requests, i));
+            }
+
+            vector_destroy(session->requests);
+            session->requests = NULL;
+        }
     }
 
     /* we are done with the mutex, finally destroy it. */
@@ -934,6 +936,8 @@ THREAD_FUNC(session_handler)
          * Make sure we get rid of all the aborted requests queued.
          * This keeps the overall memory usage lower.
          */
+
+        pdebug(DEBUG_DETAIL,"Critical block.");
         critical_block(session->mutex) {
             purge_aborted_requests_unsafe(session);
         }
@@ -989,6 +993,7 @@ THREAD_FUNC(session_handler)
             idle = 1;
 
             /* if there is work to do, make sure we do not disconnect. */
+            pdebug(DEBUG_DETAIL,"Critical block.");
             critical_block(session->mutex) {
                 if(vector_length(session->requests) > 0) {
                     auto_disconnect_time = time_ms() + SESSION_DISCONNECT_TIMEOUT;
@@ -1093,6 +1098,7 @@ THREAD_FUNC(session_handler)
             auto_disconnect = 0;
 
             /* if there is work to do, reconnect.. */
+            pdebug(DEBUG_DETAIL,"Critical block.");
             critical_block(session->mutex) {
                 if(vector_length(session->requests) > 0) {
                     pdebug(DEBUG_DETAIL, "There are requests waiting, reopening connection to PLC.");
@@ -1131,6 +1137,7 @@ THREAD_FUNC(session_handler)
     /*
      * One last time before we exit.
      */
+    pdebug(DEBUG_DETAIL,"Critical block.");
     critical_block(session->mutex) {
         purge_aborted_requests_unsafe(session);
     }

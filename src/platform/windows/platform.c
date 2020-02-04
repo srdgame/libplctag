@@ -486,7 +486,7 @@ int mutex_lock(mutex_p m)
 {
     DWORD dwWaitResult;
 
-    //pdebug("Starting");
+    pdebug(DEBUG_SPEW,"locking mutex %p", m);
 
     if(!m) {
         /*pdebug("null mutex pointer.");*/
@@ -513,7 +513,7 @@ int mutex_try_lock(mutex_p m)
 {
     DWORD dwWaitResult;
 
-    //pdebug("Starting");
+    pdebug(DEBUG_SPEW,"trying to lock mutex %p", m);
 
     if(!m) {
         /*pdebug("null mutex pointer.");*/
@@ -537,7 +537,7 @@ int mutex_try_lock(mutex_p m)
 
 int mutex_unlock(mutex_p m)
 {
-    //pdebug("Starting.");
+    pdebug(DEBUG_SPEW,"unlocking mutex %p", m);
 
     if(!m) {
         /*pdebug("null mutex pointer.");*/
@@ -563,7 +563,7 @@ int mutex_unlock(mutex_p m)
 
 int mutex_destroy(mutex_p *m)
 {
-    /*pdebug("Starting.");*/
+    pdebug(DEBUG_SPEW,"destroying mutex %p", m);
 
     if(!m) {
         /*pdebug("null mutex pointer.");*/
@@ -691,7 +691,7 @@ int thread_join(thread_p t)
 
     /* FIXME - check for uninitialized threads */
 
-    if(WaitForSingleObject(t->h_thread, (DWORD)1000)) { /* FIXME - magic timeout */
+    if(WaitForSingleObject(t->h_thread, (DWORD)INFINITE)) {
         /*pdebug("Error joining thread.");*/
         return PLCTAG_ERR_THREAD_JOIN;
     }
@@ -899,7 +899,7 @@ extern int socket_connect_tcp(sock_p s, const char *host, int port)
 
     if(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout))) {
         closesocket(fd);
-        pdebug(DEBUG_WARN,"Error setting socket set timeout option, errno: %d",errno);
+        pdebug(DEBUG_WARN,"Error setting socket send timeout option, errno: %d",errno);
         return PLCTAG_ERR_OPEN;
     }
 
@@ -921,6 +921,7 @@ extern int socket_connect_tcp(sock_p s, const char *host, int port)
         num_ips = 1;
     } else {
         struct addrinfo hints;
+        struct addrinfo* res_head = NULL;
         struct addrinfo *res = NULL;
         int rc = 0;
 
@@ -930,26 +931,28 @@ extern int socket_connect_tcp(sock_p s, const char *host, int port)
         hints.ai_socktype = SOCK_STREAM; /* TCP */
         hints.ai_family = AF_INET; /* IP V4 only */
 
-        if ((rc = getaddrinfo(host, NULL, &hints, &res)) != 0) {
+        if ((rc = getaddrinfo(host, NULL, &hints, &res_head)) != 0) {
             pdebug(DEBUG_WARN, "Error looking up PLC IP address %s, error = %d\n", host, rc);
 
             if (res) {
-                freeaddrinfo(res);
+                freeaddrinfo(res_head);
             }
 
             return PLCTAG_ERR_BAD_GATEWAY;
         }
 
+        res = res_head;
         for (num_ips = 0; res && num_ips < MAX_IPS; num_ips++) {
             ips[num_ips].s_addr = ((struct sockaddr_in *)(res->ai_addr))->sin_addr.s_addr;
             res = res->ai_next;
         }
 
-        freeaddrinfo(res);
+        freeaddrinfo(res_head);
     }
 
 
-    /* now try to connect to the remote gateway.  We may need to
+    /*
+     * now try to connect to the remote gateway.  We may need to
      * try several of the IPs we have.
      */
 
