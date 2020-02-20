@@ -36,7 +36,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin_dist)
 # the project is version 2.0
 set (libplctag_VERSION_MAJOR 2)
 set (libplctag_VERSION_MINOR 0)
-set (libplctag_VERSION_PATCH 30)
+set (libplctag_VERSION_PATCH 31)
 set (VERSION "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}.${libplctag_VERSION_PATCH}")
 
 # we need threads
@@ -55,7 +55,7 @@ set ( test_SRC_PATH "${base_SRC_PATH}/tests" )
 # OS-specific files for the platform code.
 # FIXME - does this work for macOS?
 if (UNIX)
-    set ( platform_SRC_PATH "${base_SRC_PATH}/platform/linux" )
+    set ( platform_SRC_PATH "${base_SRC_PATH}/platform/posix" )
 elseif (WIN32)
     set ( platform_SRC_PATH "${base_SRC_PATH}/platform/windows" )
 endif()
@@ -73,8 +73,16 @@ SET(C99_FLAGS "")
 # C compiler specific settings
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
     # using Clang
-    set(BASE_RELEASE_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic -Wextra -Wc99-c11-compat -Wconversion -fms-extensions -fno-strict-aliasing -D__USE_POSIX=1 -D_POSIX_C_SOURCE=200809L")
-    set(BASE_DEBUG_FLAGS "${CMAKE_C_FLAGS}  -g -Wall -pedantic -Wextra -Wc99-c11-compat -Wconversion -fms-extensions -fno-strict-aliasing -D__USE_POSIX=1 -D_POSIX_C_SOURCE=200809L")
+    set(BASE_RELEASE_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic -Wextra -Wconversion -fms-extensions -fno-strict-aliasing")
+    set(BASE_DEBUG_FLAGS "${CMAKE_C_FLAGS}  -g -Wall -pedantic -Wextra -Wconversion -fms-extensions -fno-strict-aliasing")
+
+    if(APPLE)
+        set(BASE_RELEASE_FLAGS "${BASE_RELEASE_FLAGS} -D_DARWIN_C_SOURCE")
+        set(BASE_DEBUG_FLAGS "${BASE_DEBUG_FLAGS} -D_DARWIN_C_SOURCE")
+    else()
+        set(BASE_RELEASE_FLAGS "${BASE_RELEASE_FLAGS} -D__USE_POSIX=1 -D_POSIX_C_SOURCE=200809L")
+        set(BASE_DEBUG_FLAGS "${BASE_DEBUG_FLAGS} -D__USE_POSIX=1 -D_POSIX_C_SOURCE=200809L")
+    endif()
 
 	set(C11_SUPPORT true)
 	set(C99_FLAGS "-std=c99" )
