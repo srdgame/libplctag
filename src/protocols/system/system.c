@@ -29,15 +29,6 @@
 #include <util/rc.h>
 
 
-/* we'll need to set these per protocol type.
-struct tag_vtable_t {
-    tag_vtable_func abort;
-    tag_vtable_func read;
-    tag_vtable_func status;
-    tag_vtable_func tickler;
-    tag_vtable_func write;
-};
-*/
 
 static void system_tag_destroy(plc_tag_p tag);
 
@@ -47,13 +38,55 @@ static int system_tag_read(plc_tag_p tag);
 static int system_tag_status(plc_tag_p tag);
 static int system_tag_write(plc_tag_p tag);
 
+static uint32_t get_uint32(plc_tag_p ptag, int offset);
+static int set_uint32(plc_tag_p ptag, int offset, uint32_t val);
+static uint8_t get_uint8(plc_tag_p ptag, int offset);
+
 struct tag_vtable_t system_tag_vtable = {
-        /* abort */     system_tag_abort,
-        /* read */      system_tag_read,
-        /* status */    system_tag_status,
-        /* tickler */   (tag_vtable_func)(intptr_t)(0),
-        /* write */     system_tag_write
-    };
+    /* abort */     system_tag_abort,
+    /* read */      system_tag_read,
+    /* status */    system_tag_status,
+    /* tickler */   NULL,
+    /* write */     system_tag_write,
+
+    /* data accessors */
+
+    /* get_int_attrib */ NULL,
+    /* set_int_attrib */ NULL,
+
+    /* get_bit */ NULL,
+    /* set_bit */ NULL,
+
+    /* get_uint64 */ NULL,
+    /* set_uint64 */ NULL,
+
+    /* get_int64 */ NULL,
+    /* set_int64 */ NULL,
+
+    /* get_uint32 */ get_uint32,
+    /* set_uint32 */ set_uint32,
+
+    /* get_int32 */ NULL,
+    /* set_int32 */ NULL,
+
+    /* get_uint16 */ NULL,
+    /* set_uint16 */ NULL,
+
+    /* get_int16 */ NULL,
+    /* set_int16 */ NULL,
+
+    /* get_uint8 */ get_uint8,
+    /* set_uint8 */ NULL,
+
+    /* get_int8 */ NULL,
+    /* set_int8 */ NULL,
+
+    /* get_float64 */ NULL,
+    /* set_float64 */ NULL,
+
+    /* get_float32 */ NULL,
+    /* set_float32 */ NULL
+};
 
 
 plc_tag_p system_tag_create(attr attribs)
@@ -120,6 +153,14 @@ static void system_tag_destroy(plc_tag_p ptag)
 
     if(!tag) {
         return;
+    }
+
+    if(ptag->ext_mutex) {
+        mutex_destroy(&ptag->ext_mutex);
+    }
+
+    if(ptag->api_mutex) {
+        mutex_destroy(&ptag->api_mutex);
     }
 
     //mem_free(tag);
@@ -192,4 +233,75 @@ static int system_tag_write(plc_tag_p ptag)
     pdebug(DEBUG_WARN,"Unknown system tag %s", tag->name);
     return PLCTAG_ERR_NOT_IMPLEMENTED;
 }
+
+
+
+
+uint32_t get_uint32(plc_tag_p raw_tag, int offset)
+{
+    uint32_t res = UINT32_MAX;
+    system_tag_p tag = (system_tag_p)raw_tag;
+
+    pdebug(DEBUG_SPEW, "Starting.");
+
+    /* is there enough data */
+    if((offset < 0) || (offset + ((int)sizeof(uint32_t)) > tag->size)) {
+        pdebug(DEBUG_WARN,"Data offset out of bounds.");
+        return res;
+    }
+
+    res = ((uint32_t)(tag->data[offset])) +
+          ((uint32_t)(tag->data[offset+1]) << 8) +
+          ((uint32_t)(tag->data[offset+2]) << 16) +
+          ((uint32_t)(tag->data[offset+3]) << 24);
+
+    return res;
+}
+
+
+
+int set_uint32(plc_tag_p raw_tag, int offset, uint32_t val)
+{
+    int rc = PLCTAG_STATUS_OK;
+    system_tag_p tag = (system_tag_p)raw_tag;
+
+    pdebug(DEBUG_SPEW, "Starting.");
+
+    /* is there enough data */
+    if((offset < 0) || (offset + ((int)sizeof(uint32_t)) > tag->size)) {
+        pdebug(DEBUG_WARN,"Data offset out of bounds.");
+        return PLCTAG_ERR_OUT_OF_BOUNDS;
+    }
+
+    /* write the data. */
+    tag->data[offset]   = (uint8_t)(val & 0xFF);
+    tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
+    tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
+    tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
+
+    return rc;
+}
+
+
+
+
+
+uint8_t get_uint8(plc_tag_p raw_tag, int offset)
+{
+    uint8_t res = UINT8_MAX;
+    system_tag_p tag = (system_tag_p)raw_tag;
+
+    pdebug(DEBUG_SPEW, "Starting.");
+
+    /* is there enough data */
+    if((offset < 0) || (offset + ((int)sizeof(uint8_t)) > tag->size)) {
+        pdebug(DEBUG_WARN,"Data offset out of bounds.");
+        return res;
+    }
+
+    res = tag->data[offset];
+
+    return res;
+}
+
 

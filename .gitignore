@@ -48,14 +48,16 @@ main
 .vs/ProjectSettings.json
 .vs/slnx.sqlite
 .vs/VSWorkspaceState.json
-src/lib/version.c
+src/lib/version.h
 temp.c
 /.vs/libplctag/v16/Browse.VC.db
 /.vs/libplctag/v16/Browse.VC.opendb
 /out/build/x64-Debug
+/out/build/ARM64
 #ctags/premake5/bin files
 tags
 *.so
 build/
 bin/
 src/wrappers/lua/Makefile
+/CMakeSettings.json

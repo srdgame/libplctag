@@ -128,6 +128,10 @@ void destroy_modules(void)
     ab_teardown();
 
     lib_teardown();
+
+    plc_tag_unregister_logger();
+
+    library_initialized = 0;
 }
 
 

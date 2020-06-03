@@ -127,13 +127,13 @@ void session_teardown()
         }
 
         vector_destroy(sessions);
-
         sessions = NULL;
     }
 
 
     if(session_mutex) {
         mutex_destroy((mutex_p *)&session_mutex);
+        session_mutex = NULL;
     }
 }
 
@@ -733,7 +733,7 @@ void session_destroy(void *session_arg)
     /* so remove the session from the list so no one else can reference it. */
     remove_session(session);
 
-    pdebug(DEBUG_INFO, "Session sent %"PRId64" packets.", session->packet_count);
+    pdebug(DEBUG_INFO, "Session sent %" PRId64 " packets.", session->packet_count);
 
     /* terminate the session thread first. */
     session->terminating = 1;
@@ -937,7 +937,7 @@ THREAD_FUNC(session_handler)
          * This keeps the overall memory usage lower.
          */
 
-        pdebug(DEBUG_DETAIL,"Critical block.");
+        pdebug(DEBUG_SPEW,"Critical block.");
         critical_block(session->mutex) {
             purge_aborted_requests_unsafe(session);
         }
@@ -993,7 +993,7 @@ THREAD_FUNC(session_handler)
             idle = 1;
 
             /* if there is work to do, make sure we do not disconnect. */
-            pdebug(DEBUG_DETAIL,"Critical block.");
+            pdebug(DEBUG_SPEW,"Critical block.");
             critical_block(session->mutex) {
                 if(vector_length(session->requests) > 0) {
                     auto_disconnect_time = time_ms() + SESSION_DISCONNECT_TIMEOUT;
@@ -2242,51 +2242,56 @@ int recv_forward_open_resp(ab_session_p session, int *max_payload_size_guess)
 
 int send_forward_close_req(ab_session_p session)
 {
-    eip_forward_close_req_t *fo;
+    eip_forward_close_req_t *fc;
     uint8_t *data;
     int rc = PLCTAG_STATUS_OK;
 
     pdebug(DEBUG_INFO, "Starting");
 
-    fo = (eip_forward_close_req_t *)(session->data);
+    fc = (eip_forward_close_req_t *)(session->data);
 
     /* point to the end of the struct */
-    data = (session->data) + sizeof(eip_forward_close_req_t);
+    data = (session->data) + sizeof(*fc);
 
     /* set up the path information. */
     mem_copy(data, session->conn_path, session->conn_path_size);
     data += session->conn_path_size;
 
+    /* FIXME DEBUG */
+    pdebug(DEBUG_INFO, "Forward Close connection path:");
+    pdebug_dump_bytes(DEBUG_INFO, session->conn_path, session->conn_path_size);
+
     /* fill in the static parts */
 
     /* encap header parts */
-    fo->encap_command = h2le16(AB_EIP_UNCONNECTED_SEND); /* 0x006F EIP Send RR Data command */
-    fo->encap_length = h2le16((uint16_t)(data - (uint8_t *)(&fo->interface_handle))); /* total length of packet except for encap header */
-    fo->encap_sender_context = h2le64(++session->session_seq_id);
-    fo->router_timeout = h2le16(1);                       /* one second is enough ? */
+    fc->encap_command = h2le16(AB_EIP_UNCONNECTED_SEND); /* 0x006F EIP Send RR Data command */
+    fc->encap_length = h2le16((uint16_t)(data - (uint8_t *)(&fc->interface_handle))); /* total length of packet except for encap header */
+    fc->encap_sender_context = h2le64(++session->session_seq_id);
+    fc->router_timeout = h2le16(1);                       /* one second is enough ? */
 
     /* CPF parts */
-    fo->cpf_item_count = h2le16(2);                  /* ALWAYS 2 */
-    fo->cpf_nai_item_type = h2le16(AB_EIP_ITEM_NAI); /* null address item type */
-    fo->cpf_nai_item_length = h2le16(0);             /* no data, zero length */
-    fo->cpf_udi_item_type = h2le16(AB_EIP_ITEM_UDI); /* unconnected data item, 0x00B2 */
-    fo->cpf_udi_item_length = h2le16((uint16_t)(data - (uint8_t *)(&fo->cm_service_code))); /* length of remaining data in UC data item */
+    fc->cpf_item_count = h2le16(2);                  /* ALWAYS 2 */
+    fc->cpf_nai_item_type = h2le16(AB_EIP_ITEM_NAI); /* null address item type */
+    fc->cpf_nai_item_length = h2le16(0);             /* no data, zero length */
+    fc->cpf_udi_item_type = h2le16(AB_EIP_ITEM_UDI); /* unconnected data item, 0x00B2 */
+    fc->cpf_udi_item_length = h2le16((uint16_t)(data - (uint8_t *)(&fc->cm_service_code))); /* length of remaining data in UC data item */
 
     /* Connection Manager parts */
-    fo->cm_service_code = AB_EIP_CMD_FORWARD_CLOSE;/* 0x4E Forward Close Request */
-    fo->cm_req_path_size = 2;                      /* size of path in 16-bit words */
-    fo->cm_req_path[0] = 0x20;                     /* class */
-    fo->cm_req_path[1] = 0x06;                     /* CM class */
-    fo->cm_req_path[2] = 0x24;                     /* instance */
-    fo->cm_req_path[3] = 0x01;                     /* instance 1 */
+    fc->cm_service_code = AB_EIP_CMD_FORWARD_CLOSE;/* 0x4E Forward Close Request */
+    fc->cm_req_path_size = 2;                      /* size of path in 16-bit words */
+    fc->cm_req_path[0] = 0x20;                     /* class */
+    fc->cm_req_path[1] = 0x06;                     /* CM class */
+    fc->cm_req_path[2] = 0x24;                     /* instance */
+    fc->cm_req_path[3] = 0x01;                     /* instance 1 */
 
     /* Forward Open Params */
-    fo->secs_per_tick = AB_EIP_SECS_PER_TICK;         /* seconds per tick, no used? */
-    fo->timeout_ticks = AB_EIP_TIMEOUT_TICKS;         /* timeout = srd_secs_per_tick * src_timeout_ticks, not used? */
-    fo->conn_serial_number = h2le16(session->conn_serial_number); /* our connection SEQUENCE number. */
-    fo->orig_vendor_id = h2le16(AB_EIP_VENDOR_ID);               /* our unique :-) vendor ID */
-    fo->orig_serial_number = h2le32(AB_EIP_VENDOR_SN);           /* our serial number. */
-    fo->path_size = session->conn_path_size/2; /* size in 16-bit words */
+    fc->secs_per_tick = AB_EIP_SECS_PER_TICK;         /* seconds per tick, no used? */
+    fc->timeout_ticks = AB_EIP_TIMEOUT_TICKS;         /* timeout = srd_secs_per_tick * src_timeout_ticks, not used? */
+    fc->conn_serial_number = h2le16(session->conn_serial_number); /* our connection SEQUENCE number. */
+    fc->orig_vendor_id = h2le16(AB_EIP_VENDOR_ID);               /* our unique :-) vendor ID */
+    fc->orig_serial_number = h2le32(AB_EIP_VENDOR_SN);           /* our serial number. */
+    fc->path_size = session->conn_path_size/2; /* size in 16-bit words */
+    fc->reserved = (uint8_t)0; /* padding for the path. */
 
     /* set the size of the request */
     session->data_size = (uint32_t)(data - (session->data));

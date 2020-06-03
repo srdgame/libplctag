@@ -1,5 +1,5 @@
 #
-#   Copyright 2018, Kyle Hayes
+#   Copyright 2020, Kyle Hayes
 #   Author: Kyle Hayes
 #
 #    This library is free software; you can redistribute it and/or
@@ -25,6 +25,18 @@ if(${CMAKE_VERSION} VERSION_GREATER 3.1)
     cmake_policy(SET CMP0054 NEW)
 endif()
 
+# set compiler and flags for 32-bit MinGW builds
+if (${CMAKE_GENERATOR} MATCHES "MinGW Makefiles")
+    SET(CMAKE_C_COMPILER gcc.exe)
+    SET(CMAKE_C_FLAGS "-m32 -mno-ms-bitfields -D_WIN32_WINNT=0x0600 -DLIBPLCTAGDLL_EXPORTS=1")
+    SET(CMAKE_CXX_COMPILER g++.exe)
+    SET(CMAKE_CXX_FLAGS "-m32 -mno-ms-bitfields -D_WIN32_WINNT=0x0600 -DLIBPLCTAGDLL_EXPORTS=1")
+endif()
+
+
+# default setting for 32-bit builds
+set(BUILD_32_BIT 0 CACHE BOOL "Linux 32-bit build selector")
+
 # this is the root libplctag project
 project (libplctag_project)
 
@@ -33,11 +45,13 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin_dist)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin_dist)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin_dist)
 
-# the project is version 2.0
+# the project is version 2.1
 set (libplctag_VERSION_MAJOR 2)
-set (libplctag_VERSION_MINOR 0)
-set (libplctag_VERSION_PATCH 31)
+set (libplctag_VERSION_MINOR 1)
+set (libplctag_VERSION_PATCH 5)
 set (VERSION "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}.${libplctag_VERSION_PATCH}")
+
+set (LIB_NAME_SUFFIX "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}.${libplctag_VERSION_PATCH}")
 
 # we need threads
 find_package(Threads REQUIRED)
@@ -74,7 +88,9 @@ SET(C99_FLAGS "")
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
     # using Clang
     set(BASE_RELEASE_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic -Wextra -Wconversion -fms-extensions -fno-strict-aliasing")
-    set(BASE_DEBUG_FLAGS "${CMAKE_C_FLAGS}  -g -Wall -pedantic -Wextra -Wconversion -fms-extensions -fno-strict-aliasing")
+    set(BASE_DEBUG_FLAGS "${CMAKE_C_FLAGS}  -g -fsanitize=undefined,address -Wall -pedantic -Wextra -Wconversion -fms-extensions -fno-strict-aliasing")
+    set(BASE_RELEASE_LINK_FLAGS "")
+    set(BASE_DEBUG_LINK_FLAGS "-fsanitize=undefined,address")
 
     if(APPLE)
         set(BASE_RELEASE_FLAGS "${BASE_RELEASE_FLAGS} -D_DARWIN_C_SOURCE")
@@ -86,6 +102,14 @@ if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
 
 	set(C11_SUPPORT true)
 	set(C99_FLAGS "-std=c99" )
+
+    # check to see if we are building 32-bit or 64-bit
+    if(BUILD_32_BIT)
+        set(BASE_RELEASE_FLAGS "${BASE_RELEASE_FLAGS} -m32")
+        set(BASE_DEBUG_FLAGS "${BASE_DEBUG_FLAGS} -m32")
+        set(BASE_RELEASE_LINK_FLAGS "${BASE_RELEASE_LINK_FLAGS} -m32")
+        set(BASE_DEBUG_LINK_FLAGS "${BASE_DEBUG_LINK_FLAGS} -m32")
+    endif()
 elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     # using GCC
 
@@ -114,6 +138,16 @@ elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(BASE_RELEASE_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic -Wextra ${C11_CHECK} -Wconversion -fms-extensions -fno-strict-aliasing -D__USE_POSIX=1 -D_POSIX_C_SOURCE=200809L")
     set(BASE_DEBUG_FLAGS "${CMAKE_C_FLAGS}  -g -Wall -pedantic -Wextra ${C11_CHECK} -Wconversion -fms-extensions -fno-strict-aliasing -D__USE_POSIX=1 -D_POSIX_C_SOURCE=200809L")
 	set(C99_FLAGS "-std=c99" )
+    set(BASE_RELEASE_LINK_FLAGS "")
+    set(BASE_DEBUG_LINK_FLAGS "")
+
+    # check to see if we are building 32-bit or 64-bit
+    if(BUILD_32_BIT)
+        set(BASE_RELEASE_FLAGS "${BASE_RELEASE_FLAGS} -m32")
+        set(BASE_DEBUG_FLAGS "${BASE_DEBUG_FLAGS} -m32")
+        set(BASE_RELEASE_LINK_FLAGS "${BASE_RELEASE_LINK_FLAGS} -m32")
+        set(BASE_DEBUG_LINK_FLAGS "${BASE_DEBUG_LINK_FLAGS} -m32")
+    endif()
 elseif (CMAKE_C_COMPILER_ID STREQUAL "Intel")
     # using Intel C/C++
     MESSAGE("Intel C compiler not supported!")
@@ -126,8 +160,10 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(BASE_FLAGS "${BASE_DEBUG_FLAGS}")
+    set(BASE_LINK_FLAGS "${BASE_DEBUG_LINK_FLAGS}")
 else()
     set(BASE_FLAGS "${BASE_RELEASE_FLAGS}")
+    set(BASE_LINK_FLAGS "${BASE_RELEASE_LINK_FLAGS}")
 endif()
 
 #MESSAGE("BASE_FLAGS=${BASE_FLAGS}")
@@ -141,15 +177,26 @@ if (CMAKE_C_COMPILER_ID STREQUAL "MSVC")
         message("MSVC can handle C99, compiling code as C")
         set(BASE_C_FLAGS "${BASE_FLAGS} /c")
     endif()
+
+    # set static compilation and linking flags
+    # skipped on Windows for now
+
+    #set(STATIC_COMPILE_FLAGS "/MT")
+    #set(STATIC_LINK_FLAGS "/MT:UCRT /INCREMENTAL:NO /NODEFAULTLIB:MSVCCRT")
+
+    set(STATIC_COMPILE_FLAGS "")
+    set(STATIC_LINK_FLAGS "")
 else()
     #set(BASE_C_FLAGS "${BASE_FLAGS} -std=c99 -Wc++-compat ")
     set(BASE_C_FLAGS "${BASE_FLAGS} -std=c99")
+    set(STATIC_COMPILE_FLAGS "")
+    set(STATIC_LINK_FLAGS "-static")
 endif()
 
 set(BASE_CXX_FLAGS "${BASE_FLAGS}")
 
 # generate version file from CMake info.
-CONFIGURE_FILE("${lib_SRC_PATH}/version.c.in" "${lib_SRC_PATH}/version.c" @ONLY)
+CONFIGURE_FILE("${lib_SRC_PATH}/version.h.in" "${lib_SRC_PATH}/version.h" @ONLY)
 
 # set up the library sources
 set ( libplctag_SRCS "${lib_SRC_PATH}/init.c"
@@ -210,60 +257,43 @@ FOREACH( lib_src ${libplctag_SRCS} )
 ENDFOREACH()
 
 # shared library
-add_library(plctag SHARED ${libplctag_SRCS} )
-add_library(plctag_static STATIC ${libplctag_SRCS} )
+add_library(plctag_dyn SHARED ${libplctag_SRCS} )
 
+# set various properties on them
+set_target_properties(plctag_dyn PROPERTIES SOVERSION "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}" OUTPUT_NAME "plctag")
 
-#if(THREADS_HAVE_PTHREAD_ARG)
-#  set_property(TARGET plctag PROPERTY COMPILE_OPTIONS "-pthread")
-#  set_property(TARGET plctag PROPERTY INTERFACE_COMPILE_OPTIONS "-pthread")
-#endif()
+if(BASE_LINK_FLAGS)
+    set_target_properties(plctag_dyn PROPERTIES LINK_FLAGS "${BASE_LINK_FLAGS}")
+endif()
+
+if(UNIX)
+	# static library
+	add_library(plctag_static STATIC ${libplctag_SRCS} )
+    set_target_properties(plctag_static PROPERTIES LINK_FLAGS "${BASE_LINK_FLAGS}")
+	set_target_properties(plctag_static PROPERTIES VERSION "${libplctag_VERSION_MAJOR}.${libplctag_VERSION_MINOR}" OUTPUT_NAME "plctag")
+
+	set(tool_lib "plctag_dyn")
+elseif(WIN32)
+    # skipping static lib on Windows
+
+	set(tool_lib "plctag_dyn")
+endif()
 
 # make sure we link with the threading library.
 if (UNIX)
     if(CMAKE_THREAD_LIBS_INIT)
-      target_link_libraries(plctag "${CMAKE_THREAD_LIBS_INIT}")
+      target_link_libraries(plctag_dyn "${CMAKE_THREAD_LIBS_INIT}")
+      target_link_libraries(plctag_static "${CMAKE_THREAD_LIBS_INIT}")
     endif()
 endif()
 
 # Windows needs to link the library to the WINSOCK library
 if (WIN32)
-    target_link_libraries(plctag ws2_32)
+    target_link_libraries(plctag_dyn ws2_32)
 endif()
 
 # add the examples and tests
 if (UNIX)
-	if(C11_SUPPORT)
-		# Logix simulator
-		set ( lgx_sim_FILES "${test_SRC_PATH}/lgx_sim/log.h"
-							"${test_SRC_PATH}/lgx_sim/main.c"
-							"${test_SRC_PATH}/lgx_sim/packet.h"
-							"${test_SRC_PATH}/lgx_sim/main.c"
-							"${test_SRC_PATH}/lgx_sim/session.c"
-							"${test_SRC_PATH}/lgx_sim/session.h"
-							"${test_SRC_PATH}/lgx_sim/tags.c"
-							"${test_SRC_PATH}/lgx_sim/tags.h" )
-
-		foreach ( file ${lgx_sim_FILES} )
-			set_source_files_properties("${file}" PROPERTIES COMPILE_FLAGS "${BASE_FLAGS} -std=c11")
-		endforeach ( file )
-
-		add_executable ( lgx_sim ${lgx_sim_FILES} )
-		target_link_libraries ( lgx_sim pthread )
-	endif()
-
-	# hashtable test
-	set(test_hashtable_FILES "${test_SRC_PATH}/hashtable/test_hashtable.c"
-							 "${util_SRC_PATH}/hashtable.h"
-							 "${util_SRC_PATH}/debug.h" )
-
-	foreach ( file ${test_hashtable_FILES} )
-		set_source_files_properties("${file}" PROPERTIES COMPILE_FLAGS "${C99_FLAGS} ${BASE_FLAGS}")
-	endforeach ( file )
-
-    add_executable(test_hashtable ${test_hashtable_FILES} )
-    target_link_libraries(test_hashtable plctag pthread)
-
 	# example programs
     set ( example_PROGRAMS async
                            async_stress
@@ -282,16 +312,18 @@ if (UNIX)
                            stress_api_lock
                            stress_test
                            string
+                           test_callback
                            test_reconnect
+                           test_shutdown
                            test_special
+                           test_tag_attributes
+                           toggle_bit
                            toggle_bool
                            write_string
                            tag_rw )
 
     set ( example_PROG_UTIL utils_posix.c )
-    set ( example_LIBRARIES plctag pthread )
-
-
+    set ( example_LIBRARIES ${tool_lib} pthread )
 elseif(WIN32)
     set ( example_PROGRAMS async
                            async_stress
@@ -301,34 +333,89 @@ elseif(WIN32)
                            simple_dual
                            slc500
                            string
+                           test_callback
+                           test_shutdown
                            test_special
+                           test_tag_attributes
+                           toggle_bit
                            toggle_bool
                            write_string
                            tag_rw )
 
     set ( example_PROG_UTIL utils_windows.c)
-    set ( example_LIBRARIES plctag ws2_32 )
+    set ( example_LIBRARIES ${tool_lib} ws2_32 )
 endif()
 
-# simple.cpp is different because it is C++
-set_source_files_properties("${example_SRC_PATH}/simple_cpp.cpp" PROPERTIES COMPILE_FLAGS ${BASE_CXX_FLAGS})
-add_executable (simple_cpp "${example_SRC_PATH}/simple_cpp.cpp" "${example_SRC_PATH}/${example_PROG_UTIL}" "${example_SRC_PATH}/utils.h" )
-target_link_libraries (simple_cpp ${example_LIBRARIES} )
+# set the compile flags for the utilities file.
+set_source_files_properties("${example_SRC_PATH}/${example_PROG_UTIL}" PROPERTIES COMPILE_FLAGS "${C99_FLAGS} ${BASE_C_FLAGS}" )
 
-
+# set the compile and link properties for all examples.
 foreach ( example ${example_PROGRAMS} )
     set_source_files_properties("${example_SRC_PATH}/${example}.c" PROPERTIES COMPILE_FLAGS "${C99_FLAGS} ${BASE_C_FLAGS}" )
     add_executable( ${example} "${example_SRC_PATH}/${example}.c" "${example_SRC_PATH}/${example_PROG_UTIL}" "${example_SRC_PATH}/utils.h" )
     target_link_libraries(${example} ${example_LIBRARIES} )
+
+    if(BASE_LINK_FLAGS)
+        set_target_properties(${example} PROPERTIES LINK_FLAGS "${BASE_LINK_FLAGS}")
+    endif()
 endforeach(example)
+
+# simple.cpp is different because it is C++
+message("BASE_CXX_FLAGS=${BASE_CXX_FLAGS}")
+set_source_files_properties("${example_SRC_PATH}/simple_cpp.cpp" PROPERTIES COMPILE_FLAGS "${BASE_CXX_FLAGS}")
+add_executable (simple_cpp "${example_SRC_PATH}/simple_cpp.cpp" "${example_SRC_PATH}/${example_PROG_UTIL}" "${example_SRC_PATH}/utils.h" )
+
+target_link_libraries (simple_cpp ${example_LIBRARIES} )
+
+if(BASE_LINK_FLAGS)
+    message("BASE_LINK_FLAGS=${BASE_LINK_FLAGS}")
+    set_target_properties(simple_cpp PROPERTIES LINK_FLAGS "${BASE_LINK_FLAGS}")
+endif()
 
 
 # Generate files from templates
 CONFIGURE_FILE("${CMAKE_CURRENT_SOURCE_DIR}/libplctag.pc.in" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libplctag.pc" @ONLY)
 
+# build the GitHub Actions config file
+CONFIGURE_FILE("${CMAKE_CURRENT_SOURCE_DIR}/.github/workflows/ci.yml.in" "${CMAKE_CURRENT_SOURCE_DIR}/.github/workflows/ci.yml" @ONLY)
+
+# build the simulator for testing.
+if(UNIX)
+    set(AB_SERVER_FILES ${test_SRC_PATH}/ab_server/src/cip.c
+                        ${test_SRC_PATH}/ab_server/src/cip.h
+                        ${test_SRC_PATH}/ab_server/src/cpf.c
+                        ${test_SRC_PATH}/ab_server/src/cpf.h
+                        ${test_SRC_PATH}/ab_server/src/eip.c
+                        ${test_SRC_PATH}/ab_server/src/eip.h
+                        ${test_SRC_PATH}/ab_server/src/main.c
+                        ${test_SRC_PATH}/ab_server/src/plc.h
+                        ${test_SRC_PATH}/ab_server/src/slice.h
+                        ${test_SRC_PATH}/ab_server/src/socket.c
+                        ${test_SRC_PATH}/ab_server/src/socket.h
+                        ${test_SRC_PATH}/ab_server/src/tcp_server.c
+                        ${test_SRC_PATH}/ab_server/src/tcp_server.h
+                        ${test_SRC_PATH}/ab_server/src/utils.c
+                        ${test_SRC_PATH}/ab_server/src/utils.h
+    )
+
+#    foreach(AB_SERVER_FILE ${AB_SERVER_FILES})
+#        set_source_files_properties("${AB_SERVER_FILE}" PROPERTIES COMPILE_FLAGS "${C99_FLAGS} ${BASE_C_FLAGS}" )
+#    endforeach()
+
+    add_executable(ab_server ${AB_SERVER_FILES})
+endif()
+
+# make sure the .h file is in the output directory
+CONFIGURE_FILE("${CMAKE_CURRENT_SOURCE_DIR}/src/lib/libplctag.h" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libplctag.h" COPYONLY)
+
 # for installation
-install(TARGETS plctag DESTINATION lib${LIB_SUFFIX})
-install(TARGETS plctag_static DESTINATION lib${LIB_SUFFIX})
+if(UNIX)
+	install(TARGETS plctag_dyn DESTINATION lib${LIB_SUFFIX})
+	install(TARGETS plctag_static DESTINATION lib${LIB_SUFFIX})
+elseif(WIN32)
+	install(TARGETS plctag_dyn DESTINATION lib${LIB_SUFFIX})
+endif()
+
 install(FILES "${lib_SRC_PATH}/libplctag.h" DESTINATION include)
 install(FILES "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libplctag.pc" DESTINATION "lib${LIB_SUFFIX}/pkgconfig")
 

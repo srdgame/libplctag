@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2019 by Kyle Hayes                                      *
+ *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -10,7 +10,7 @@
  *   This program is distributed in the hope that it will be useful,       *
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
+ *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU Library General Public     *
  *   License along with this program; if not, write to the                 *
@@ -20,9 +20,7 @@
 
 #pragma once
 
-/*
- * The version string.
- */
+#include "plc.h"
+#include "slice.h"
 
-extern const char *VERSION;
-
+extern slice_s cip_dispatch_request(slice_s input, slice_s output, plc_s *context);

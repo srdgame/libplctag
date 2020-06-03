@@ -61,6 +61,48 @@ struct tag_vtable_t {
     tag_vtable_func status;
     tag_vtable_func tickler;
     tag_vtable_func write;
+
+    /* data accessors. */
+//    int (*get_size)(plc_tag_p tag);
+    int (*get_int_attrib)(plc_tag_p tag, const char *attrib_name, int default_value);
+    int (*set_int_attrib)(plc_tag_p tag, const char *attrib_name, int new_value);
+
+    int (*get_bit)(plc_tag_p tag, int offset_bit);
+    int (*set_bit)(plc_tag_p tag, int offset_bit, int val);
+
+    uint64_t (*get_uint64)(plc_tag_p tag, int offset);
+    int (*set_uint64)(plc_tag_p tag, int offset, uint64_t val);
+
+    int64_t (*get_int64)(plc_tag_p tag, int offset);
+    int (*set_int64)(plc_tag_p tag, int offset, int64_t val);
+
+
+    uint32_t (*get_uint32)(plc_tag_p tag, int offset);
+    int (*set_uint32)(plc_tag_p tag, int offset, uint32_t val);
+
+    int32_t (*get_int32)(plc_tag_p tag, int offset);
+    int (*set_int32)(plc_tag_p tag, int offset, int32_t val);
+
+
+    uint16_t (*get_uint16)(plc_tag_p tag, int offset);
+    int (*set_uint16)(plc_tag_p tag, int offset, uint16_t val);
+
+    int16_t (*get_int16)(plc_tag_p tag, int offset);
+    int (*set_int16)(plc_tag_p tag, int offset, int16_t val);
+
+
+    uint8_t (*get_uint8)(plc_tag_p tag, int offset);
+    int (*set_uint8)(plc_tag_p tag, int offset, uint8_t val);
+
+    int8_t (*get_int8)(plc_tag_p tag, int offset);
+    int (*set_int8)(plc_tag_p tag, int offset, int8_t val);
+
+
+    double (*get_float64)(plc_tag_p tag, int offset);
+    int (*set_float64)(plc_tag_p tag, int offset, double val);
+
+    float (*get_float32)(plc_tag_p tag, int offset);
+    int (*set_float32)(plc_tag_p tag, int offset, float val);
 };
 
 typedef struct tag_vtable_t *tag_vtable_p;
@@ -81,6 +123,9 @@ typedef struct tag_vtable_t *tag_vtable_p;
                         int tag_id; \
                         int64_t read_cache_expire; \
                         int64_t read_cache_ms; \
+                        int read_complete; \
+                        int write_complete; \
+                        void (*callback)(int32_t tag_id, int event, int status); \
                         int size; \
                         uint8_t *data
 

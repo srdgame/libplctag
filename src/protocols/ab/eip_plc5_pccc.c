@@ -41,7 +41,44 @@ struct tag_vtable_t plc5_vtable = {
     (tag_vtable_func)tag_read_start,
     (tag_vtable_func)tag_status,
     (tag_vtable_func)tag_tickler,
-    (tag_vtable_func)tag_write_start
+    (tag_vtable_func)tag_write_start,
+
+    /* data accessors */
+    ab_get_int_attrib,
+    ab_set_int_attrib,
+
+    ab_get_bit,
+    ab_set_bit,
+
+    ab_get_uint64,
+    ab_set_uint64,
+
+    ab_get_int64,
+    ab_set_int64,
+
+    ab_get_uint32,
+    ab_set_uint32,
+
+    ab_get_int32,
+    ab_set_int32,
+
+    ab_get_uint16,
+    ab_set_uint16,
+
+    ab_get_int16,
+    ab_set_int16,
+
+    ab_get_uint8,
+    ab_set_uint8,
+
+    ab_get_int8,
+    ab_set_int8,
+
+    ab_get_float64,
+    ab_set_float64,
+
+    ab_get_float32,
+    ab_set_float32
 };
 
 
@@ -125,6 +162,12 @@ int tag_tickler(ab_tag_p tag)
         pdebug(DEBUG_SPEW, "Read in progress.");
         rc = check_read_status(tag);
         tag->status = rc;
+
+        /* check to see if the read finished. */
+        if(!tag->read_in_progress) {
+            tag->read_complete = 1;
+        }
+
         return rc;
     }
 
@@ -132,6 +175,12 @@ int tag_tickler(ab_tag_p tag)
         pdebug(DEBUG_SPEW, "Write in progress.");
         rc = check_write_status(tag);
         tag->status = rc;
+
+        /* check to see if the write finished. */
+        if(!tag->write_in_progress) {
+            tag->write_complete = 1;
+        }
+
         return rc;
     }
 
