@@ -25,8 +25,6 @@ namespace lua_module {
 		);
 
 		module.new_enum("Error",
-			"PENDING", PLCTAG_STATUS_PENDING,
-			"OK", PLCTAG_STATUS_OK,
 			"BAD_CONFIG", PLCTAG_ERR_BAD_CONNECTION,
 			"BAD_CONNECTION", PLCTAG_ERR_BAD_CONNECTION,
 			"BAD_DATA", PLCTAG_ERR_BAD_DATA,
@@ -63,10 +61,24 @@ namespace lua_module {
 			"UNSUPPORTED", PLCTAG_ERR_UNSUPPORTED,
 			"WINSOCK", PLCTAG_ERR_WINSOCK,
 			"WRITE", PLCTAG_ERR_WRITE,
-			"PARTIAL", PLCTAG_ERR_PARTIAL
+			"PARTIAL", PLCTAG_ERR_PARTIAL,
+			"BUSY", PLCTAG_ERR_BUSY
+		);
+
+		module.new_enum("DebugLevel",
+			"NONE", PLCTAG_DEBUG_NONE,
+			"ERROR", PLCTAG_DEBUG_ERROR,
+			"WARN", PLCTAG_DEBUG_WARN,
+			"INFO", PLCTAG_DEBUG_INFO,
+			"DETAIL", PLCTAG_DEBUG_DETAIL,
+			"SPEW", PLCTAG_DEBUG_SPEW
 		);
 
 		module.set_function("decode_error", plc_tag_decode_error );
+		module.set_function("set_debug_level", plc_tag_set_debug_level );
+		module.set_function("check_lib_version", plc_tag_check_lib_version );
+		module.set_function("shutdown", plc_tag_shutdown );
+
 		module.set_function("create", plc_tag_create );
 		module.set_function("lock", plc_tag_lock );
 		module.set_function("unlock", plc_tag_unlock );
@@ -75,10 +87,14 @@ namespace lua_module {
 		module.set_function("read", plc_tag_read );
 		module.set_function("status", plc_tag_status );
 		module.set_function("write", plc_tag_write );
-		module.set_function("get_size", plc_tag_get_size );
 
+		module.set_function("get_int_attribute", plc_tag_get_int_attribute );
+		module.set_function("set_int_attribute", plc_tag_set_int_attribute );
+		module.set_function("get_size", plc_tag_get_size );
 		module.set_function("get_bool", plc_tag_get_bool );
 		module.set_function("set_bool", plc_tag_set_bool );
+		module.set_function("get_bit", plc_tag_get_bit );
+		module.set_function("set_bit", plc_tag_set_bit );
 		module.set_function("get_uint64", plc_tag_get_uint64 );
 		module.set_function("set_uint64", plc_tag_set_uint64 );
 		module.set_function("get_int64", plc_tag_get_int64 );

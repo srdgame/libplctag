@@ -17,7 +17,7 @@ project "plctag"
 		--"/usr/include/lua5.3",
 		".",
 		"../../",
-		"../../platform/linux",
+		"../../platform/posix",
 	}
 	files { 
 		"./src/**.hpp",
@@ -40,21 +40,21 @@ project "plctag"
 		defines { "NDEBUG" }
 		optimize "On"
 
-project "lgx_sim"
+project "ab_server"
 	kind "ConsoleApp"
 	language "C"
-	location "build/lgx_sim"
+	location "build/ab_server"
 	targetdir "bin/%{cfg.buildcfg}"
 	dependson { "plctag-static" }
 
 	includedirs {
 		".",
 		"../../",
-		"../../platform/linux",
+		"../../platform/posix",
 	}
 	files {
-		"../../tests/lgx_sim/**.h",
-		"../../tests/lgx_sim/**.c",
+		"../../tests/ab_server/**.h",
+		"../../tests/ab_server/**.c",
 	}
 
 	links { "pthread", "plctag-static" }
@@ -75,15 +75,15 @@ project "plctag-static"
 
 	includedirs { 
 		"../../",
-		"../../platform/linux",
+		"../../platform/posix",
 		"../../protocols",
 		"../../utils",
 	}
 	files { 
 		"../../lib/**.h",
 		"../../lib/**.c",
-		"../../platform/linux/**.h",
-		"../../platform/linux/**.c",
+		"../../platform/posix/**.h",
+		"../../platform/posix/**.c",
 		"../../protocols/**.h",
 		"../../protocols/**.c",
 		"../../util/**.h",

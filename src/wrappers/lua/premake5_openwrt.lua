@@ -17,7 +17,7 @@ project "plctag"
 		--"/usr/include/lua5.3",
 		".",
 		"../../",
-		"../../platform/linux",
+		"../../platform/posix",
 	}
 	files { 
 		"./src/**.hpp",
@@ -48,15 +48,15 @@ project "plctag-static"
 
 	includedirs { 
 		"../../",
-		"../../platform/linux",
+		"../../platform/posix",
 		"../../protocols",
 		"../../utils",
 	}
 	files { 
 		"../../lib/**.h",
 		"../../lib/**.c",
-		"../../platform/linux/**.h",
-		"../../platform/linux/**.c",
+		"../../platform/posix/**.h",
+		"../../platform/posix/**.c",
 		"../../protocols/**.h",
 		"../../protocols/**.c",
 		"../../util/**.h",
