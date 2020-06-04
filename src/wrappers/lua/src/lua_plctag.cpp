@@ -8,6 +8,8 @@ extern "C" {
 #define SOL_CHECK_ARGUMENTS 1
 #include "sol/sol.hpp"
 
+#define LIB_PLC_TAG_VERSION 2.2
+
 bool plc_tag_get_bool(int32_t id, int offset);
 int plc_tag_set_bool(int32_t id, int offset, bool val);
 
@@ -125,6 +127,11 @@ namespace lua_module {
 
 		// Sol2 will wrap the NULL to nil automatically
 		//module.set("null", PLC_TAG_NULL);
+
+		/**
+		 * Module version
+		 */
+		module["VERSION"] = LIB_PLC_TAG_VERSION;
 
 		return module;
 	}
