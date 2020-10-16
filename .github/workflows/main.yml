@@ -29,7 +29,7 @@ jobs:
       - uses: freeioe/freeioe_build_action@v1.1
         id: build
         with:
-          action: build_ext_all.sh
+          action: extension
           workdir: src/wrappers/lua
 
       - uses: actions/upload-artifact@v2
