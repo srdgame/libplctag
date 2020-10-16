@@ -34,5 +34,5 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: output_files
+          name: lua-libplctag
           path: ${{ github.workspace }}/__output/**/*
