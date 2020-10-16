@@ -1,6 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2018 by Kyle Hayes                                      *
+ *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
+ *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -10,7 +23,7 @@
  *   This program is distributed in the hope that it will be useful,       *
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
+ *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU Library General Public     *
  *   License along with this program; if not, write to the                 *
@@ -139,3 +152,27 @@ inline static uint64_t le2h64(uint64_le src)
     return result;
 }
 
+
+
+/* as seen on comp.arch by David Brown
+
+uint32_t read32be(const uint8_t * buf) {
+    uint32_t res = 0;
+    res = (res << 8) | *buf++;
+    res = (res << 8) | *buf++;
+    res = (res << 8) | *buf++;
+    res = (res << 8) | *buf++;
+    return res;
+}
+
+
+uint32_t read32le(const uint8_t * p) {
+    uint32_t x = 0;
+    x = (x >> 8) | ((uint32_t) *p++ << 24);
+    x = (x >> 8) | ((uint32_t) *p++ << 24);
+    x = (x >> 8) | ((uint32_t) *p++ << 24);
+    x = (x >> 8) | ((uint32_t) *p++ << 24);
+    return x;
+}
+
+*/

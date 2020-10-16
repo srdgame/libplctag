@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -69,7 +82,7 @@ int main()
 
     printf("Testing library attributes.\n");
 
-    expect_match(0, "debug_level", PLCTAG_DEBUG_DETAIL);
+    expect_match(0, "debug", PLCTAG_DEBUG_DETAIL);
     
     printf("\tLibrary version from attributes %d.%d.%d\n", 
                     plc_tag_get_int_attribute(0, "version_major", 0),

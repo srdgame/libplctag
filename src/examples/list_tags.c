@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -262,7 +275,7 @@ int main(int argc, char **argv)
     }
 
     /* loop over the tags and output their connection strings. */
-    for(struct tag_entry_s *old_tag, *tag = tags; tag; old_tag = tag, tag = tag->next, free(old_tag)) {
+    for(struct tag_entry_s *old_tag = NULL, *tag = tags; tag; old_tag = tag, tag = tag->next, free(old_tag->name), free(old_tag)) {
         printf("Tag \"%s", tag->name);
         switch(tag->num_dimensions) {
             case 1:

@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -18,6 +31,7 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -38,12 +52,36 @@ static void parse_path(const char *path, plc_s *plc);
 static void parse_tag(const char *tag, plc_s *plc);
 static slice_s request_handler(slice_s input, slice_s output, void *plc);
 
+
+volatile sig_atomic_t done = 0;
+
+void SIGINT_handler(int not_used)
+{
+    (void)not_used;
+
+    done = 1;
+}
+
+void setup_break_handler(void)
+{
+    struct sigaction act;
+
+    /* set up signal handler. */
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = SIGINT_handler;
+    sigaction(SIGINT, &act, NULL);
+}
+
+
 int main(int argc, const char **argv)
 {
     tcp_server_p server = NULL;
     uint8_t buf[4200];  /* CIP only allows 4002 for the CIP request, but there is overhead. */
     slice_s server_buf = slice_make(buf, sizeof(buf));
     plc_s plc;
+
+    /* set up handler for ^C etc. */
+    setup_break_handler();
 
     debug_off();
 
@@ -58,7 +96,7 @@ int main(int argc, const char **argv)
     /* open a server connection and listen on the right port. */
     server = tcp_server_create("0.0.0.0", "44818", server_buf, request_handler, &plc);
 
-    tcp_server_start(server);
+    tcp_server_start(server, &done);
 
     tcp_server_destroy(server);
 
@@ -69,7 +107,7 @@ int main(int argc, const char **argv)
 void usage(void)
 {
     fprintf(stderr, "Usage: ab_server --plc=<plc_type> [--path=<path>] --tag=<tag>\n"
-                    "   <plc type> = one of \"ControlLogix\" or \"Micro800\".\n"
+                    "   <plc type> = one of \"ControlLogix\", \"Micro800\" or \"Omron\".\n"
                     "   <path> = (required for ControlLogix) internal path to CPU in PLC.  E.g. \"1,0\".\n"
                     "\n"
                     "    Tags are in the format: <name>:<type>[<sizes>] where:\n"
@@ -125,6 +163,30 @@ void process_args(int argc, const char **argv, plc_s *plc)
                 plc->path[2] = (uint8_t)0x24;
                 plc->path[3] = (uint8_t)0x01;
                 plc->path_len = 4;
+                plc->client_to_server_max_packet = 508;
+                plc->server_to_client_max_packet = 508;
+                needs_path = false;
+                has_plc = true;
+            }  else if(strcasecmp(&(argv[i][6]), "Omron") == 0) {
+                fprintf(stderr, "Selecting Omron NJ/NX simulator.\n");
+                plc->plc_type = PLC_OMRON;
+                plc->path[0] = (uint8_t)0x12;  /* Extended segment, port A */
+                plc->path[1] = (uint8_t)0x09;  /* 9 bytes length. */
+                plc->path[2] = (uint8_t)0x31;  /* '1' */
+                plc->path[3] = (uint8_t)0x32;  /* '2' */
+                plc->path[4] = (uint8_t)0x37;  /* '7' */
+                plc->path[5] = (uint8_t)0x2e;  /* '.' */
+                plc->path[6] = (uint8_t)0x30;  /* '0' */
+                plc->path[7] = (uint8_t)0x2e;  /* '.' */
+                plc->path[8] = (uint8_t)0x30;  /* '0' */
+                plc->path[9] = (uint8_t)0x2e;  /* '.' */
+                plc->path[10] = (uint8_t)0x31; /* '1' */
+                plc->path[11] = (uint8_t)0x00; /* padding */
+                plc->path[12] = (uint8_t)0x20;  
+                plc->path[13] = (uint8_t)0x02;
+                plc->path[14] = (uint8_t)0x24; 
+                plc->path[15] = (uint8_t)0x01;
+                plc->path_len = 16;
                 plc->client_to_server_max_packet = 508;
                 plc->server_to_client_max_packet = 508;
                 needs_path = false;

@@ -1,6 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2015 by OmanTek                                         *
- *   Author Kyle Hayes  kylehayes@omantek.com                              *
+ *   Copyright (C) 2020 by Kyle Hayes                                      *
+ *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
+ *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -10,19 +23,13 @@
  *   This program is distributed in the hope that it will be useful,       *
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
+ *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU Library General Public     *
  *   License along with this program; if not, write to the                 *
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-
-/**************************************************************************
- * CHANGE LOG                                                             *
- *                                                                        *
- * 2013-11-19  KRH - Created file.                                        *
- **************************************************************************/
 
 #include <limits.h>
 #include <float.h>
@@ -37,8 +44,9 @@
 #include <ab/eip_cip.h>
 #include <ab/eip_lgx_pccc.h>
 #include <ab/eip_plc5_pccc.h>
+#include <ab/eip_plc5_dhp.h>
 #include <ab/eip_slc_pccc.h>
-#include <ab/eip_dhp_pccc.h>
+#include <ab/eip_slc_dhp.h>
 #include <ab/session.h>
 #include <ab/tag.h>
 #include <util/attr.h>
@@ -77,6 +85,7 @@ volatile int ab_protocol_terminating = 0;
 
 /* forward declarations*/
 static int get_tag_data_type(ab_tag_p tag, attr attribs);
+static void set_tag_byte_order(ab_tag_p tag);
 
 static void ab_tag_destroy(ab_tag_p tag);
 static int default_abort(plc_tag_p tag);
@@ -94,42 +103,9 @@ struct tag_vtable_t default_vtable = {
     default_tickler,
     default_write,
 
-    /* data accessors */
+    /* attribute accessors */
     ab_get_int_attrib,
-    ab_set_int_attrib,
-
-    ab_get_bit,
-    ab_set_bit,
-
-    ab_get_uint64,
-    ab_set_uint64,
-
-    ab_get_int64,
-    ab_set_int64,
-
-    ab_get_uint32,
-    ab_set_uint32,
-
-    ab_get_int32,
-    ab_set_int32,
-
-    ab_get_uint16,
-    ab_set_uint16,
-
-    ab_get_int16,
-    ab_set_int16,
-
-    ab_get_uint8,
-    ab_set_uint8,
-
-    ab_get_int8,
-    ab_set_int8,
-
-    ab_get_float64,
-    ab_set_float64,
-
-    ab_get_float32,
-    ab_set_float32
+    ab_set_int_attrib
 };
 
 
@@ -222,45 +198,127 @@ plc_tag_p ab_tag_create(attr attribs)
         return (plc_tag_p)NULL;
     }
 
+    /* set up any required settings based on the cpu type. */
+    switch(tag->plc_type) {
+    case AB_PLC_PLC5:
+        tag->use_connected_msg = 0;
+        tag->allow_packing = 0;
+        break;
+
+    case AB_PLC_SLC:
+        tag->use_connected_msg = 0;
+        tag->allow_packing = 0;
+        break;
+
+    case AB_PLC_MLGX:
+        tag->use_connected_msg = 0;
+        tag->allow_packing = 0;
+        break;
+
+    case AB_PLC_LGX_PCCC:
+        tag->use_connected_msg = 0;
+        tag->allow_packing = 0;
+        break;
+
+    case AB_PLC_LGX:
+        /* default to requiring a connection and allowing packing. */
+        tag->use_connected_msg = attr_get_int(attribs,"use_connected_msg", 1);
+        tag->allow_packing = attr_get_int(attribs, "allow_packing", 1);
+        break;
+
+    case AB_PLC_MLGX800:
+        /* we must use connected messaging here. */
+        pdebug(DEBUG_DETAIL, "Micro800 needs connected messaging.");
+        tag->use_connected_msg = 1;
+
+        /* Micro800 cannot pack requests. */
+        tag->allow_packing = 0;
+        break;
+
+    case AB_PLC_OMRON_NJNX:
+        tag->use_connected_msg = 1;
+        tag->allow_packing = 0;
+        break;
+
+    default:
+        pdebug(DEBUG_WARN, "Unknown PLC type!");
+        tag->status = PLCTAG_ERR_BAD_CONFIG;
+        return (plc_tag_p)tag;
+        break;
+    }
+
+    /* make sure that the connection requirement is forced. */
+    attr_set_int(attribs, "use_connected_msg", tag->use_connected_msg);
+
     /* get the connection path.  We need this to make a decision about the PLC. */
     path = attr_get_str(attribs,"path",NULL);
 
+    /*
+     * Find or create a session.
+     *
+     * All tags need sessions.  They are the TCP connection to the gateway PLC.
+     */
+    if(session_find_or_create(&tag->session, attribs) != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_INFO,"Unable to create session!");
+        tag->status = PLCTAG_ERR_BAD_GATEWAY;
+        return (plc_tag_p)tag;
+    }
+
+    pdebug(DEBUG_DETAIL, "using session=%p", tag->session);
+
     /* set up PLC-specific information. */
-    switch(tag->protocol_type) {
-    case AB_PROTOCOL_PLC:
-        if(!path) {
+    switch(tag->plc_type) {
+    case AB_PLC_PLC5:
+        if(!tag->session->dhp_dest) {
             pdebug(DEBUG_DETAIL, "Setting up PLC/5 tag.");
+            
+            if(str_length(path)) {
+                pdebug(DEBUG_WARN, "A path is not supported for this PLC type if it is not for a DH+ bridge.");
+            }
+
             tag->use_connected_msg = 0;
             tag->vtable = &plc5_vtable;
         } else {
             pdebug(DEBUG_DETAIL, "Setting up PLC/5 via DH+ bridge tag.");
             tag->use_connected_msg = 1;
-            tag->vtable = &eip_dhp_pccc_vtable;
+            tag->vtable = &eip_plc5_dhp_vtable;
         }
 
         tag->allow_packing = 0;
         break;
 
-    case AB_PROTOCOL_SLC:
-    case AB_PROTOCOL_MLGX:
-        pdebug(DEBUG_DETAIL, "Setting up SLC, MicroLogix tag.");
-        tag->use_connected_msg = 0;
+    case AB_PLC_SLC:
+    case AB_PLC_MLGX:
+        if(!tag->session->dhp_dest) {
+            
+            if(str_length(path)) {
+                pdebug(DEBUG_WARN, "A path is not supported for this PLC type if it is not for a DH+ bridge.");
+            }
+
+            pdebug(DEBUG_DETAIL, "Setting up SLC/MicroLogix tag.");
+            tag->use_connected_msg = 0;
+            tag->vtable = &slc_vtable;
+        } else {
+            pdebug(DEBUG_DETAIL, "Setting up SLC/MicroLogix via DH+ bridge tag.");
+            tag->use_connected_msg = 1;
+            tag->vtable = &eip_slc_dhp_vtable;
+        }
+
         tag->allow_packing = 0;
-        tag->vtable = &slc_vtable;
         break;
 
-    case AB_PROTOCOL_LGX_PCCC:
+    case AB_PLC_LGX_PCCC:
         pdebug(DEBUG_DETAIL, "Setting up PCCC-mapped Logix tag.");
         tag->use_connected_msg = 0;
         tag->allow_packing = 0;
         tag->vtable = &lgx_pccc_vtable;
         break;
 
-    case AB_PROTOCOL_LGX:
+    case AB_PLC_LGX:
         pdebug(DEBUG_DETAIL, "Setting up Logix tag.");
 
         /* Logix tags need a path. */
-        if(path == NULL && tag->protocol_type == AB_PROTOCOL_LGX) {
+        if(path == NULL && tag->plc_type == AB_PLC_LGX) {
             pdebug(DEBUG_WARN,"A path is required for Logix-class PLCs!");
             tag->status = PLCTAG_ERR_BAD_PARAM;
             return (plc_tag_p)tag;
@@ -276,12 +334,31 @@ plc_tag_p ab_tag_create(attr attribs)
         /* default to requiring a connection. */
         tag->use_connected_msg = attr_get_int(attribs,"use_connected_msg", 1);
         tag->allow_packing = attr_get_int(attribs, "allow_packing", 1);
-        tag->vtable = &eip_cip_vtable;
+        tag->vtable = &eip_cip_frag_vtable;
 
         break;
 
-    case AB_PROTOCOL_MLGX800:
+    case AB_PLC_MLGX800:
         pdebug(DEBUG_DETAIL, "Setting up Micro8X0 tag.");
+            
+        if(path || str_length(path)) {
+            pdebug(DEBUG_WARN, "A path is not supported for this PLC type.");
+        }
+
+        tag->use_connected_msg = 1;
+        tag->allow_packing = 0;
+        tag->vtable = &eip_cip_frag_vtable;
+        break;
+
+    case AB_PLC_OMRON_NJNX:
+        pdebug(DEBUG_DETAIL, "Setting up OMRON NJ/NX Series tag.");
+
+        if(str_length(path) == 0) {
+            pdebug(DEBUG_WARN,"A path is required for this PLC type.");
+            tag->status = PLCTAG_ERR_BAD_PARAM;
+            return (plc_tag_p)tag;
+        }
+
         tag->use_connected_msg = 1;
         tag->allow_packing = 0;
         tag->vtable = &eip_cip_vtable;
@@ -291,26 +368,38 @@ plc_tag_p ab_tag_create(attr attribs)
         pdebug(DEBUG_WARN, "Unknown PLC type!");
         tag->status = PLCTAG_ERR_BAD_CONFIG;
         return (plc_tag_p)tag;
-        break;
     }
 
     /* pass the connection requirement since it may be overridden above. */
     attr_set_int(attribs, "use_connected_msg", tag->use_connected_msg);
 
-    /* determine the total tag size if this is not a tag list. */
-//    if(!tag->tag_list) {
-//        if(!tag->elem_size) {
-//            tag->elem_size = attr_get_int(attribs, "elem_size", 0);
-//        }
-//        tag->elem_count = attr_get_int(attribs,"elem_count", 1);
-//    }
-
+    /* set the byte order for the tag. */
+    set_tag_byte_order(tag);
 
     /* get the element count, default to 1 if missing. */
     tag->elem_count = attr_get_int(attribs,"elem_count", 1);
 
-    /* we still need size on non Logix-class PLCs */
-    if(tag->protocol_type != AB_PROTOCOL_LGX && tag->protocol_type != AB_PROTOCOL_MLGX800) {
+
+    switch(tag->plc_type) {
+    case AB_PLC_OMRON_NJNX:
+        if (tag->elem_count != 1) {
+            tag->elem_count = 1;
+            pdebug(DEBUG_WARN,"Attribute elem_count should be 1!");
+        }
+
+        /* from here is the same as a AB_PLC_MLGX800. */
+
+        /* fall through */
+    case AB_PLC_LGX:
+    case AB_PLC_MLGX800:
+        /* fill this in when we read the tag. */
+        tag->elem_size = 0;
+        tag->size = 0;
+        tag->data = NULL;
+        break;
+
+    default:
+        /* we still need size on non Logix-class PLCs */
         /* get the element size if it is not already set. */
         if(!tag->elem_size) {
             tag->elem_size = attr_get_int(attribs, "elem_size", 0);
@@ -333,25 +422,8 @@ plc_tag_p ab_tag_create(attr attribs)
             tag->status = PLCTAG_ERR_NO_MEM;
             return (plc_tag_p)tag;
         }
-    } else {
-        /* fill this in when we read the tag. */
-        tag->elem_size = 0;
-        tag->size = 0;
-        tag->data = NULL;
+        break;
     }
-
-    /*
-     * Find or create a session.
-     *
-     * All tags need sessions.  They are the TCP connection to the gateway PLC.
-     */
-    if(session_find_or_create(&tag->session, attribs) != PLCTAG_STATUS_OK) {
-        pdebug(DEBUG_INFO,"Unable to create session!");
-        tag->status = PLCTAG_ERR_BAD_GATEWAY;
-        return (plc_tag_p)tag;
-    }
-
-    pdebug(DEBUG_DETAIL, "using session=%p", tag->session);
 
     /*
      * check the tag name, this is protocol specific.
@@ -386,11 +458,11 @@ int get_tag_data_type(ab_tag_p tag, attr attribs)
     const char *elem_type = NULL;
     const char *tag_name = NULL;
 
-    switch(tag->protocol_type) {
-    case AB_PROTOCOL_PLC:
-    case AB_PROTOCOL_SLC:
-    case AB_PROTOCOL_LGX_PCCC:
-    case AB_PROTOCOL_MLGX:
+    switch(tag->plc_type) {
+    case AB_PLC_PLC5:
+    case AB_PLC_SLC:
+    case AB_PLC_LGX_PCCC:
+    case AB_PLC_MLGX:
         tag_name = attr_get_str(attribs,"name", NULL);
 
         /* the first two characters are the important ones. */
@@ -469,8 +541,9 @@ int get_tag_data_type(ab_tag_p tag, attr attribs)
 
         break;
 
-    case AB_PROTOCOL_LGX:
-    case AB_PROTOCOL_MLGX800:
+    case AB_PLC_LGX:
+    case AB_PLC_MLGX800:
+    case AB_PLC_OMRON_NJNX:
         /* look for the elem_type attribute. */
         elem_type = attr_get_str(attribs, "elem_type", NULL);
         if(elem_type) {
@@ -519,7 +592,7 @@ int get_tag_data_type(ab_tag_p tag, attr attribs)
             }
         } else {
             /* just for Logix, check for tag listing */
-            if(tag->protocol_type == AB_PROTOCOL_LGX) {
+            if(tag->plc_type == AB_PLC_LGX) {
                 const char *tag_name = attr_get_str(attribs, "name", NULL);
                 int tag_listing_rc = setup_tag_listing(tag, tag_name);
 
@@ -542,6 +615,55 @@ int get_tag_data_type(ab_tag_p tag, attr attribs)
 
     return PLCTAG_STATUS_OK;
 }
+
+
+
+void set_tag_byte_order(ab_tag_p tag)
+{
+    /* 16-bit ints. */
+    tag->byte_order.int16_order_0 = 0;
+    tag->byte_order.int16_order_1 = 1;
+
+    /* 32-bit ints */
+    tag->byte_order.int32_order_0 = 0;
+    tag->byte_order.int32_order_1 = 1;
+    tag->byte_order.int32_order_2 = 2;
+    tag->byte_order.int32_order_3 = 3;
+
+    /* 64-bit ints */
+    tag->byte_order.int64_order_0 = 0;
+    tag->byte_order.int64_order_1 = 1;
+    tag->byte_order.int64_order_2 = 2;
+    tag->byte_order.int64_order_3 = 3;
+    tag->byte_order.int64_order_4 = 4;
+    tag->byte_order.int64_order_5 = 5;
+    tag->byte_order.int64_order_6 = 6;
+    tag->byte_order.int64_order_7 = 7;
+
+    /* 32-bit floats. */
+    if(tag->plc_type == AB_PLC_PLC5) {
+        tag->byte_order.float32_order_0 = 2;
+        tag->byte_order.float32_order_1 = 3;
+        tag->byte_order.float32_order_2 = 0;
+        tag->byte_order.float32_order_3 = 1;
+    } else {
+        tag->byte_order.float32_order_0 = 0;
+        tag->byte_order.float32_order_1 = 1;
+        tag->byte_order.float32_order_2 = 2;
+        tag->byte_order.float32_order_3 = 3;
+    }
+
+    /* 64-bit floats */
+    tag->byte_order.float64_order_0 = 0;
+    tag->byte_order.float64_order_1 = 1;
+    tag->byte_order.float64_order_2 = 2;
+    tag->byte_order.float64_order_3 = 3;
+    tag->byte_order.float64_order_4 = 4;
+    tag->byte_order.float64_order_5 = 5;
+    tag->byte_order.float64_order_6 = 6;
+    tag->byte_order.float64_order_7 = 7;
+}
+
 
 
 
@@ -745,896 +867,39 @@ int ab_set_int_attrib(plc_tag_p raw_tag, const char *attrib_name, int new_value)
 
 
 
-int ab_get_bit(plc_tag_p raw_tag, int offset_bit)
-{
-    int res = PLCTAG_ERR_OUT_OF_BOUNDS;
-    int real_offset = offset_bit;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* if this is a single bit, then make sure the offset is the tag bit. */
-    if(tag->is_bit) {
-        real_offset = tag->bit;
-    } else {
-        real_offset = offset_bit;
-    }
-
-    /* is there enough data */
-    pdebug(DEBUG_SPEW, "real_offset=%d, byte offset=%d, tag size=%d", real_offset, (real_offset/8), tag->size);
-    if((real_offset < 0) || ((real_offset / 8) >= tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    pdebug(DEBUG_SPEW, "selecting bit %d with offset %d in byte %d (%x).", real_offset, (real_offset % 8), (real_offset / 8), tag->data[real_offset / 8]);
-
-    res = !!(((1 << (real_offset % 8)) & 0xFF) & (tag->data[real_offset / 8]));
-
-    return res;
-}
-
-
-int ab_set_bit(plc_tag_p raw_tag, int offset_bit, int val)
-{
-    int res = PLCTAG_STATUS_OK;
-    int real_offset = offset_bit;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* if this is a single bit, then make sure the offset is the tag bit. */
-    if(tag->is_bit) {
-        real_offset = tag->bit;
-    } else {
-        real_offset = offset_bit;
-    }
-
-    /* is there enough data */
-    if((real_offset < 0) || ((real_offset / 8) >= tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(val) {
-        tag->data[real_offset / 8] |= (uint8_t)(1 << (real_offset % 8));
-    } else {
-        tag->data[real_offset / 8] &= (uint8_t)(~(1 << (real_offset % 8)));
-    }
-
-    res = PLCTAG_STATUS_OK;
-
-    return res;
-}
-
-
-
-uint64_t ab_get_uint64(plc_tag_p raw_tag, int offset)
-{
-    uint64_t res = UINT64_MAX;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data? */
-    if((offset < 0) || (offset + ((int)sizeof(uint64_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = ((uint64_t)(tag->data[offset])) +
-              ((uint64_t)(tag->data[offset+1]) << 8) +
-              ((uint64_t)(tag->data[offset+2]) << 16) +
-              ((uint64_t)(tag->data[offset+3]) << 24) +
-              ((uint64_t)(tag->data[offset+4]) << 32) +
-              ((uint64_t)(tag->data[offset+5]) << 40) +
-              ((uint64_t)(tag->data[offset+6]) << 48) +
-              ((uint64_t)(tag->data[offset+7]) << 56);
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-int ab_set_uint64(plc_tag_p raw_tag, int offset, uint64_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint64_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    /* write the data. */
-    if(!tag->is_bit) {
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-        tag->data[offset+4] = (uint8_t)((val >> 32) & 0xFF);
-        tag->data[offset+5] = (uint8_t)((val >> 40) & 0xFF);
-        tag->data[offset+6] = (uint8_t)((val >> 48) & 0xFF);
-        tag->data[offset+7] = (uint8_t)((val >> 56) & 0xFF);
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-int64_t ab_get_int64(plc_tag_p raw_tag, int offset)
-{
-    int64_t res = INT64_MIN;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int64_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = (int64_t)(((uint64_t)(tag->data[offset])) +
-                        ((uint64_t)(tag->data[offset+1]) << 8) +
-                        ((uint64_t)(tag->data[offset+2]) << 16) +
-                        ((uint64_t)(tag->data[offset+3]) << 24) +
-                        ((uint64_t)(tag->data[offset+4]) << 32) +
-                        ((uint64_t)(tag->data[offset+5]) << 40) +
-                        ((uint64_t)(tag->data[offset+6]) << 48) +
-                        ((uint64_t)(tag->data[offset+7]) << 56));
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-int ab_set_int64(plc_tag_p raw_tag, int offset, int64_t ival)
-{
-    uint64_t val = (uint64_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int64_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(!tag->is_bit) {
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-        tag->data[offset+4] = (uint8_t)((val >> 32) & 0xFF);
-        tag->data[offset+5] = (uint8_t)((val >> 40) & 0xFF);
-        tag->data[offset+6] = (uint8_t)((val >> 48) & 0xFF);
-        tag->data[offset+7] = (uint8_t)((val >> 56) & 0xFF);
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-
-uint32_t ab_get_uint32(plc_tag_p raw_tag, int offset)
-{
-    uint32_t res = UINT32_MAX;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint32_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = ((uint32_t)(tag->data[offset])) +
-              ((uint32_t)(tag->data[offset+1]) << 8) +
-              ((uint32_t)(tag->data[offset+2]) << 16) +
-              ((uint32_t)(tag->data[offset+3]) << 24);
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-int ab_set_uint32(plc_tag_p raw_tag, int offset, uint32_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint32_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    /* write the data. */
-    if(!tag->is_bit) {
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-int32_t ab_get_int32(plc_tag_p raw_tag, int offset)
-{
-    int32_t res = INT32_MIN;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int32_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = (int32_t)(((uint32_t)(tag->data[offset])) +
-                        ((uint32_t)(tag->data[offset+1]) << 8) +
-                        ((uint32_t)(tag->data[offset+2]) << 16) +
-                        ((uint32_t)(tag->data[offset+3]) << 24));
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-int ab_set_int32(plc_tag_p raw_tag, int offset, int32_t ival)
-{
-    uint32_t val = (uint32_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int32_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(!tag->is_bit) {
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-        tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-        tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-
-uint16_t ab_get_uint16(plc_tag_p raw_tag, int offset)
-{
-    uint16_t res = UINT16_MAX;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint16_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = (uint16_t)((tag->data[offset]) +
-                        ((tag->data[offset+1]) << 8));
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-
-int ab_set_uint16(plc_tag_p raw_tag, int offset, uint16_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint16_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(!tag->is_bit) {
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-
-
-
-int16_t  ab_get_int16(plc_tag_p raw_tag, int offset)
-{
-    int16_t res = INT16_MIN;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int16_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = (int16_t)(((tag->data[offset])) +
-                        ((tag->data[offset+1]) << 8));
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-
-int ab_set_int16(plc_tag_p raw_tag, int offset, int16_t ival)
-{
-    uint16_t val = (uint16_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int16_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(!tag->is_bit) {
-        tag->data[offset]   = (uint8_t)(val & 0xFF);
-        tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-uint8_t ab_get_uint8(plc_tag_p raw_tag, int offset)
-{
-    uint8_t res = UINT8_MAX;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint8_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = tag->data[offset];
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-
-int ab_set_uint8(plc_tag_p raw_tag, int offset, uint8_t val)
-{
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(uint8_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(!tag->is_bit) {
-        tag->data[offset] = val;
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-
-int8_t ab_get_int8(plc_tag_p raw_tag, int offset)
-{
-    int8_t res = INT8_MIN;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int8_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    if(!tag->is_bit) {
-        res = (int8_t)(tag->data[offset]);
-    } else {
-        if(ab_get_bit(raw_tag, 0)) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    }
-
-    return res;
-}
-
-
-
-
-int ab_set_int8(plc_tag_p raw_tag, int offset, int8_t ival)
-{
-    uint8_t val = (uint8_t)(ival);
-    int rc = PLCTAG_STATUS_OK;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(int8_t)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    if(!tag->is_bit) {
-        tag->data[offset] = (uint8_t)val;
-    } else {
-        if(!val) {
-            rc = ab_set_bit(raw_tag, 0, 0);
-        } else {
-            rc = ab_set_bit(raw_tag, 0, 1);
-        }
-    }
-
-    return rc;
-}
-
-
-
-
-
-
-double ab_get_float64(plc_tag_p raw_tag, int offset)
-{
-    uint64_t ures = 0;
-    double res = DBL_MAX;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    if(tag->is_bit) {
-        pdebug(DEBUG_WARN, "Getting float64 value is unsupported on a bit tag!");
-        return res;
-    }
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(ures)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    ures = ((uint64_t)(tag->data[offset])) +
-           ((uint64_t)(tag->data[offset+1]) << 8) +
-           ((uint64_t)(tag->data[offset+2]) << 16) +
-           ((uint64_t)(tag->data[offset+3]) << 24) +
-           ((uint64_t)(tag->data[offset+4]) << 32) +
-           ((uint64_t)(tag->data[offset+5]) << 40) +
-           ((uint64_t)(tag->data[offset+6]) << 48) +
-           ((uint64_t)(tag->data[offset+7]) << 56);
-
-    /* copy the data */
-    mem_copy(&res,&ures,sizeof(res));
-
-    return res;
-}
-
-
-
-
-int ab_set_float64(plc_tag_p raw_tag, int offset, double fval)
-{
-    int rc = PLCTAG_STATUS_OK;
-    uint64_t val = 0;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    if(tag->is_bit) {
-        pdebug(DEBUG_WARN, "Setting float64 value is unsupported on a bit tag!");
-        return PLCTAG_ERR_UNSUPPORTED;
-    }
-
-    mem_copy(&val, &fval, sizeof(val));
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(val)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    tag->data[offset]   = (uint8_t)(val & 0xFF);
-    tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-    tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-    tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-    tag->data[offset+4] = (uint8_t)((val >> 32) & 0xFF);
-    tag->data[offset+5] = (uint8_t)((val >> 40) & 0xFF);
-    tag->data[offset+6] = (uint8_t)((val >> 48) & 0xFF);
-    tag->data[offset+7] = (uint8_t)((val >> 56) & 0xFF);
-
-    return rc;
-}
-
-
-
-float ab_get_float32(plc_tag_p raw_tag, int offset)
-{
-    uint32_t ures;
-    float res = FLT_MAX;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    if(tag->is_bit) {
-        pdebug(DEBUG_WARN, "Getting float32 value is unsupported on a bit tag!");
-        return res;
-    }
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return res;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(ures)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return res;
-    }
-
-    ures = ((uint32_t)(tag->data[offset])) +
-           ((uint32_t)(tag->data[offset+1]) << 8) +
-           ((uint32_t)(tag->data[offset+2]) << 16) +
-           ((uint32_t)(tag->data[offset+3]) << 24);
-
-    /* copy the data */
-    mem_copy(&res,&ures,sizeof(res));
-
-    return res;
-}
-
-
-
-
-int ab_set_float32(plc_tag_p raw_tag, int offset, float fval)
-{
-    int rc = PLCTAG_STATUS_OK;
-    uint32_t val = 0;
-    ab_tag_p tag = (ab_tag_p)raw_tag;
-
-    pdebug(DEBUG_SPEW, "Starting.");
-
-    if(tag->is_bit) {
-        pdebug(DEBUG_WARN, "Setting float32 value is unsupported on a bit tag!");
-        return PLCTAG_ERR_UNSUPPORTED;
-    }
-
-    mem_copy(&val, &fval, sizeof(val));
-
-    /* is there data? */
-    if(!tag->data) {
-        pdebug(DEBUG_WARN,"Tag has no data!");
-        return PLCTAG_ERR_NO_DATA;
-    }
-
-    /* is there enough data */
-    if((offset < 0) || (offset + ((int)sizeof(val)) > tag->size)) {
-        pdebug(DEBUG_WARN,"Data offset out of bounds.");
-        return PLCTAG_ERR_OUT_OF_BOUNDS;
-    }
-
-    tag->data[offset]   = (uint8_t)(val & 0xFF);
-    tag->data[offset+1] = (uint8_t)((val >> 8) & 0xFF);
-    tag->data[offset+2] = (uint8_t)((val >> 16) & 0xFF);
-    tag->data[offset+3] = (uint8_t)((val >> 24) & 0xFF);
-
-    return rc;
-}
-
-
-
-
-
 plc_type_t get_plc_type(attr attribs)
 {
     const char *cpu_type = attr_get_str(attribs, "plc", attr_get_str(attribs, "cpu", "NONE"));
 
     if (!str_cmp_i(cpu_type, "plc") || !str_cmp_i(cpu_type, "plc5")) {
         pdebug(DEBUG_DETAIL,"Found PLC/5 PLC.");
-        return AB_PROTOCOL_PLC;
+        return AB_PLC_PLC5;
     } else if ( !str_cmp_i(cpu_type, "slc") || !str_cmp_i(cpu_type, "slc500")) {
         pdebug(DEBUG_DETAIL,"Found SLC 500 PLC.");
-        return AB_PROTOCOL_SLC;
+        return AB_PLC_SLC;
     } else if (!str_cmp_i(cpu_type, "lgxpccc") || !str_cmp_i(cpu_type, "logixpccc") || !str_cmp_i(cpu_type, "lgxplc5") || !str_cmp_i(cpu_type, "logixplc5") ||
                !str_cmp_i(cpu_type, "lgx-pccc") || !str_cmp_i(cpu_type, "logix-pccc") || !str_cmp_i(cpu_type, "lgx-plc5") || !str_cmp_i(cpu_type, "logix-plc5")) {
         pdebug(DEBUG_DETAIL,"Found Logix-class PLC using PCCC protocol.");
-        return AB_PROTOCOL_LGX_PCCC;
+        return AB_PLC_LGX_PCCC;
     } else if (!str_cmp_i(cpu_type, "micrologix800") || !str_cmp_i(cpu_type, "mlgx800") || !str_cmp_i(cpu_type, "micro800")) {
         pdebug(DEBUG_DETAIL,"Found Micro8xx PLC.");
-        return AB_PROTOCOL_MLGX800;
+        return AB_PLC_MLGX800;
     } else if (!str_cmp_i(cpu_type, "micrologix") || !str_cmp_i(cpu_type, "mlgx")) {
         pdebug(DEBUG_DETAIL,"Found MicroLogix PLC.");
-        return AB_PROTOCOL_MLGX;
+        return AB_PLC_MLGX;
     } else if (!str_cmp_i(cpu_type, "compactlogix") || !str_cmp_i(cpu_type, "clgx") || !str_cmp_i(cpu_type, "lgx") ||
                !str_cmp_i(cpu_type, "controllogix") || !str_cmp_i(cpu_type, "contrologix") ||
                !str_cmp_i(cpu_type, "logix")) {
         pdebug(DEBUG_DETAIL,"Found ControlLogix/CompactLogix PLC.");
-        return AB_PROTOCOL_LGX;
+        return AB_PLC_LGX;
+    } else if (!str_cmp_i(cpu_type, "omron-njnx") || !str_cmp_i(cpu_type, "omron-nj") || !str_cmp_i(cpu_type, "omron-nx") || !str_cmp_i(cpu_type, "njnx")
+               || !str_cmp_i(cpu_type, "nx1p2")) {
+        pdebug(DEBUG_DETAIL,"Found OMRON NJ/NX Series PLC.");
+        return AB_PLC_OMRON_NJNX;
     } else {
         pdebug(DEBUG_WARN, "Unsupported device type: %s", cpu_type);
 
-        return AB_PROTOCOL_NONE;
+        return AB_PLC_NONE;
     }
 }
 
@@ -1644,11 +909,11 @@ int check_cpu(ab_tag_p tag, attr attribs)
 {
     plc_type_t result = get_plc_type(attribs);
 
-    if(result != AB_PROTOCOL_NONE) {
-        tag->protocol_type = result;
+    if(result != AB_PLC_NONE) {
+        tag->plc_type = result;
         return PLCTAG_STATUS_OK;
     } else {
-        tag->protocol_type = result;
+        tag->plc_type = result;
         return PLCTAG_ERR_BAD_DEVICE;
     }
 }
@@ -1663,9 +928,9 @@ int check_tag_name(ab_tag_p tag, const char* name)
     }
 
     /* attempt to parse the tag name */
-    switch (tag->protocol_type) {
-    case AB_PROTOCOL_PLC:
-    case AB_PROTOCOL_LGX_PCCC:
+    switch (tag->plc_type) {
+    case AB_PLC_PLC5:
+    case AB_PLC_LGX_PCCC:
         if ((rc = plc5_encode_tag_name(tag->encoded_name, &(tag->encoded_name_size), &(tag->file_type), name, MAX_TAG_NAME)) != PLCTAG_STATUS_OK) {
             pdebug(DEBUG_WARN, "parse of PLC/5-style tag name %s failed!", name);
 
@@ -1674,8 +939,8 @@ int check_tag_name(ab_tag_p tag, const char* name)
 
         break;
 
-    case AB_PROTOCOL_SLC:
-    case AB_PROTOCOL_MLGX:
+    case AB_PLC_SLC:
+    case AB_PLC_MLGX:
         if ((rc = slc_encode_tag_name(tag->encoded_name, &(tag->encoded_name_size), &(tag->file_type), name, MAX_TAG_NAME)) != PLCTAG_STATUS_OK) {
             pdebug(DEBUG_WARN, "parse of SLC-style tag name %s failed!", name);
 
@@ -1684,8 +949,9 @@ int check_tag_name(ab_tag_p tag, const char* name)
 
         break;
 
-    case AB_PROTOCOL_MLGX800:
-    case AB_PROTOCOL_LGX:
+    case AB_PLC_MLGX800:
+    case AB_PLC_LGX:
+    case AB_PLC_OMRON_NJNX:
         if ((rc = cip_encode_tag_name(tag, name)) != PLCTAG_STATUS_OK) {
             pdebug(DEBUG_WARN, "parse of CIP-style tag name %s failed!", name);
 
@@ -1696,7 +962,7 @@ int check_tag_name(ab_tag_p tag, const char* name)
 
     default:
         /* how would we get here? */
-        pdebug(DEBUG_WARN, "unsupported protocol %d", tag->protocol_type);
+        pdebug(DEBUG_WARN, "unsupported PLC type %d", tag->plc_type);
 
         return PLCTAG_ERR_BAD_PARAM;
 

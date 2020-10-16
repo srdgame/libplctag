@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -52,13 +65,14 @@ typedef struct tag_def_s tag_def_s;
 
 typedef enum {
     PLC_CONTROL_LOGIX,
-    PLC_MICRO800
+    PLC_MICRO800,
+    PLC_OMRON
 } plc_type_t;
 
 /* Define the context that is passed around. */
 typedef struct {
     plc_type_t plc_type;
-    uint8_t path[16];
+    uint8_t path[20];
     uint8_t path_len;
 
     /* connection info. */

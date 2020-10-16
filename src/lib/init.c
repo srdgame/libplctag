@@ -1,6 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2016 by Kyle Hayes                                      *
+ *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
+ *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -10,7 +23,7 @@
  *   This program is distributed in the hope that it will be useful,       *
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
+ *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU Library General Public     *
  *   License along with this program; if not, write to the                 *
@@ -25,6 +38,7 @@
 #include <util/attr.h>
 #include <util/debug.h>
 #include <ab/ab.h>
+#include <mb/modbus.h>
 #include <system/system.h>
 #include <lib/init.h>
 
@@ -47,11 +61,14 @@ struct {
     {NULL, "system", "library", NULL, system_tag_create},
     /* Allen-Bradley PLCs */
     {"ab-eip", NULL, NULL, NULL, ab_tag_create},
-    {"ab_eip", NULL, NULL, NULL, ab_tag_create}
+    {"ab_eip", NULL, NULL, NULL, ab_tag_create},
+    {"modbus-tcp", NULL, NULL, NULL, mb_tag_create},
+    {"modbus_tcp", NULL, NULL, NULL, mb_tag_create}
 };
 
 static lock_t library_initialization_lock = LOCK_INIT;
 static volatile int library_initialized = 0;
+static mutex_p lib_mutex = NULL;
 
 
 /*
@@ -127,7 +144,16 @@ void destroy_modules(void)
 {
     ab_teardown();
 
+    mb_teardown();
+
     lib_teardown();
+
+    spin_block(&library_initialization_lock) {
+        if(lib_mutex != NULL) {
+            mutex_destroy(&lib_mutex);
+            lib_mutex = NULL;
+        }
+    }
 
     plc_tag_unregister_logger();
 
@@ -147,32 +173,59 @@ int initialize_modules(void)
 {
     int rc = PLCTAG_STATUS_OK;
 
-    /* loop until we get the lock flag */
-    while (!lock_acquire((lock_t*)&library_initialization_lock)) {
-        sleep_ms(1);
-    }
+    pdebug(DEBUG_INFO, "Starting.");
 
-    if(!library_initialized) {
-        /* initialize a random seed value. */
-        srand((unsigned int)time_ms());
-
-        pdebug(DEBUG_INFO,"Initialized library modules.");
-        rc = lib_init();
-
-        if(rc == PLCTAG_STATUS_OK) {
-            rc = ab_init();
+    /* 
+     * Try to keep busy waiting to a minimum.
+     * If there is no mutex set up, then create one. 
+     * Only one thread allowed at a time through this gate.
+     */
+    spin_block(&library_initialization_lock) {
+        if(lib_mutex == NULL) {
+            rc = mutex_create(&lib_mutex);
         }
-
-        library_initialized = 1;
-
-        /* hook the destructor */
-        atexit(destroy_modules);
-
-        pdebug(DEBUG_INFO,"Done initializing library modules.");
     }
 
-    /* we hold the lock, so clear it.*/
-    lock_release((lock_t*)&library_initialization_lock);
+    /* check the status outside the lock. */
+    if(!lib_mutex || rc != PLCTAG_STATUS_OK) {
+        pdebug(DEBUG_ERROR, "Unable to initialize library mutex!  Error %s!", plc_tag_decode_error(rc));
+        return rc;
+    } else {
+        /* 
+        * guard library initialization with a mutex.
+        * 
+        * This prevents busy waiting as would happen with just a spin lock.
+        */
+        critical_block(lib_mutex) {
+            if(!library_initialized) {
+                /* initialize a random seed value. */
+                srand((unsigned int)time_ms());
+
+                pdebug(DEBUG_INFO,"Initialized library modules.");
+                rc = lib_init();
+
+                pdebug(DEBUG_INFO,"Initializing AB module.");
+                if(rc == PLCTAG_STATUS_OK) {
+                    rc = ab_init();
+                }
+
+                pdebug(DEBUG_INFO,"Initializing Modbus module.");
+                if(rc == PLCTAG_STATUS_OK) {
+                    rc = mb_init();
+                }
+
+                /* hook the destructor */
+                atexit(destroy_modules);
+
+                /* do this last */
+                library_initialized = 1;
+
+                pdebug(DEBUG_INFO,"Done initializing library modules.");
+            }
+        }
+    }
+
+    pdebug(DEBUG_INFO, "Done.");
 
     return rc;
 }

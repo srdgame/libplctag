@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -52,7 +65,7 @@ tcp_server_p tcp_server_create(const char *host, const char *port, slice_s buffe
     return server;
 }
 
-void tcp_server_start(tcp_server_p server)
+void tcp_server_start(tcp_server_p server, volatile sig_atomic_t *terminate)
 {
     int client_fd;
     bool done = false;
@@ -128,7 +141,7 @@ void tcp_server_start(tcp_server_p server)
 
         socket_close(client_fd);
 
-    } while(!done);
+    } while(!done && !*terminate);
 }
 
 

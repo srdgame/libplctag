@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -41,9 +54,9 @@
 
 #define REQUIRED_VERSION 2,1,0
 
-//#define TAG_ATTRIBS "protocol=ab_eip&gateway=10.206.1.40&path=1,4&cpu=LGX&use_connected_msg=0&elem_size=4&elem_count=1&name=TestBigArray[0]&debug=4"
+//#define TAG_ATTRIBS "protocol=ab_eip&gateway=10.206.1.40&path=1,4&cpu=LGX&elem_size=4&elem_count=1&name=TestBigArray[0]&debug=4"
 //#define TAG_ATTRIBS "protocol=ab_eip&gateway=10.206.1.38&cpu=PLC5&elem_size=4&elem_count=1&name=F8:0&debug=4"
-#define NUM_TAGS  (10)
+#define NUM_TAGS  (30)
 //#define NUM_ELEMS (1)
 #define DATA_TIMEOUT (1000)
 

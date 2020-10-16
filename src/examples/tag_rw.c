@@ -2,6 +2,19 @@
  *   Copyright (C) 2020 by Kyle Hayes                                      *
  *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
  *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
  *   published by the Free Software Foundation; either version 2 of the    *
@@ -220,7 +233,7 @@ int main(int argc, char **argv)
     /* check arguments */
     if(!path || !data_type) {
         usage();
-        exit(0);
+        exit(1);
     }
 
     /* convert any write values */
@@ -336,7 +349,7 @@ int main(int argc, char **argv)
         printf("ERROR %s: error creating tag!\n", plc_tag_decode_error(tag));
         if(path) free(path);
         if(write_str) free(write_str);
-        return 0;
+        exit(1);
     }
 
     if((rc = plc_tag_status(tag)) != PLCTAG_STATUS_OK) {
@@ -344,7 +357,7 @@ int main(int argc, char **argv)
         plc_tag_destroy(tag);
         if(path) free(path);
         if(write_str) free(write_str);
-        return 0;
+        exit(1);
     }
 
     do {
@@ -363,6 +376,7 @@ int main(int argc, char **argv)
 
                 if(rc < 0) {
                     printf("Error received trying to read bit tag: %s!\n", plc_tag_decode_error(rc));
+                    break;
                 } else {
                     printf("data=%d\n", rc);
                 }
@@ -473,6 +487,7 @@ int main(int argc, char **argv)
             rc = plc_tag_write(tag, DATA_TIMEOUT);
             if(rc != PLCTAG_STATUS_OK) {
                 printf("ERROR: error writing data: %s!\n",plc_tag_decode_error(rc));
+                break;
             } else {
                 printf("Wrote %s\n",write_str);
             }
@@ -489,6 +504,11 @@ int main(int argc, char **argv)
 
     if(tag) {
         plc_tag_destroy(tag);
+    }
+
+    if(rc != PLCTAG_STATUS_OK) {
+        printf("ERROR: error received %s!", plc_tag_decode_error(rc));
+        exit(1);
     }
 
     printf("Done\n");

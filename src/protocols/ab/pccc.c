@@ -1,6 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2015 by OmanTek                                         *
- *   Author Kyle Hayes  kylehayes@omantek.com                              *
+ *   Copyright (C) 2020 by Kyle Hayes                                      *
+ *   Author Kyle Hayes  kyle.hayes@gmail.com                               *
+ *                                                                         *
+ * This software is available under either the Mozilla Public License      *
+ * version 2.0 or the GNU LGPL version 2 (or later) license, whichever     *
+ * you choose.                                                             *
+ *                                                                         *
+ * MPL 2.0:                                                                *
+ *                                                                         *
+ *   This Source Code Form is subject to the terms of the Mozilla Public   *
+ *   License, v. 2.0. If a copy of the MPL was not distributed with this   *
+ *   file, You can obtain one at http://mozilla.org/MPL/2.0/.              *
+ *                                                                         *
+ *                                                                         *
+ * LGPL 2:                                                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU Library General Public License as       *
@@ -10,7 +23,7 @@
  *   This program is distributed in the hope that it will be useful,       *
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU Library General Public License for more details.                  *
+ *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU Library General Public     *
  *   License along with this program; if not, write to the                 *
@@ -18,13 +31,16 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <string.h>
 #include <ctype.h>
+#include <limits.h>
+#include <float.h>
+#include <string.h>
 #include <lib/libplctag.h>
 #include <lib/tag.h>
 #include <platform.h>
 #include <ab/ab_common.h>
 #include <ab/pccc.h>
+#include <ab/tag.h>
 #include <util/debug.h>
 
 
@@ -47,6 +63,8 @@ static int encode_file_type(pccc_file_t file_type);
 
 
 
+
+
 /*
  * The PLC/5, SLC, and MicroLogix have their own unique way of determining what you are
  * accessing.   All variables and data are in data-table files.  Each data-table contains
@@ -63,6 +81,7 @@ static int encode_file_type(pccc_file_t file_type);
  * Float       F       32-bit float
  * Input       I       word
  * Output      O       word
+ * Long Int    L       32-bit integer, two words
  * Message     MG      structure/56 words
  * Integer     N       word
  * PID         PD      structure/41 floats
@@ -730,6 +749,12 @@ int parse_pccc_file_type(const char **str, pccc_file_t *file_type)
         (*str)++;
         break;
 
+    case 'L':
+    case 'l':
+        *file_type = PCCC_FILE_LONG_INT;
+        (*str)++;
+        break;
+
     case 'M':
     case 'm': /* Message */
         if((*str)[1] == 'G' || (*str)[1] == 'g') {
@@ -744,7 +769,7 @@ int parse_pccc_file_type(const char **str, pccc_file_t *file_type)
         break;
 
     case 'N':
-    case 'n': /* Input */
+    case 'n': /* INT */
         *file_type = PCCC_FILE_INT;
         (*str)++;
         break;
@@ -1071,10 +1096,11 @@ int encode_file_type(pccc_file_t file_type)
         case PCCC_FILE_BCD: return 0x8f; break;
         case PCCC_FILE_FLOAT: return 0x8a; break;
         case PCCC_FILE_INPUT: return 0x8c; break;
-        case PCCC_FILE_MESSAGE: break;
+        case PCCC_FILE_LONG_INT: return 0x91; break;
+        case PCCC_FILE_MESSAGE: return 0x92; break;
         case PCCC_FILE_INT: return 0x89; break;
         case PCCC_FILE_OUTPUT: return 0x8b; break;
-        case PCCC_FILE_PID: break;
+        case PCCC_FILE_PID: return 0x93; break;
         case PCCC_FILE_CONTROL: return 0x88; break;
         case PCCC_FILE_STATUS: return 0x84; break;
         case PCCC_FILE_SFC: break;
