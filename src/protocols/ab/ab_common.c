@@ -170,7 +170,6 @@ plc_tag_p ab_tag_create(attr attribs)
      */
 
     tag = (ab_tag_p)rc_alloc(sizeof(struct ab_tag_t), (rc_cleanup_func)ab_tag_destroy);
-
     if(!tag) {
         pdebug(DEBUG_ERROR,"Unable to allocate memory for AB EIP tag!");
         return (plc_tag_p)NULL;
@@ -271,7 +270,7 @@ plc_tag_p ab_tag_create(attr attribs)
     case AB_PLC_PLC5:
         if(!tag->session->dhp_dest) {
             pdebug(DEBUG_DETAIL, "Setting up PLC/5 tag.");
-            
+
             if(str_length(path)) {
                 pdebug(DEBUG_WARN, "A path is not supported for this PLC type if it is not for a DH+ bridge.");
             }
@@ -290,7 +289,7 @@ plc_tag_p ab_tag_create(attr attribs)
     case AB_PLC_SLC:
     case AB_PLC_MLGX:
         if(!tag->session->dhp_dest) {
-            
+
             if(str_length(path)) {
                 pdebug(DEBUG_WARN, "A path is not supported for this PLC type if it is not for a DH+ bridge.");
             }
@@ -327,27 +326,27 @@ plc_tag_p ab_tag_create(attr attribs)
         rc = get_tag_data_type(tag, attribs);
         if(rc != PLCTAG_STATUS_OK) {
             pdebug(DEBUG_WARN, "Error getting tag element data type %s!", plc_tag_decode_error(rc));
-            tag->status = rc;
+            tag->status = (int8_t)rc;
             return (plc_tag_p)tag;
         }
 
         /* default to requiring a connection. */
         tag->use_connected_msg = attr_get_int(attribs,"use_connected_msg", 1);
         tag->allow_packing = attr_get_int(attribs, "allow_packing", 1);
-        tag->vtable = &eip_cip_frag_vtable;
+        tag->vtable = &eip_cip_vtable;
 
         break;
 
     case AB_PLC_MLGX800:
         pdebug(DEBUG_DETAIL, "Setting up Micro8X0 tag.");
-            
+
         if(path || str_length(path)) {
             pdebug(DEBUG_WARN, "A path is not supported for this PLC type.");
         }
 
         tag->use_connected_msg = 1;
         tag->allow_packing = 0;
-        tag->vtable = &eip_cip_frag_vtable;
+        tag->vtable = &eip_cip_vtable;
         break;
 
     case AB_PLC_OMRON_NJNX:
@@ -440,6 +439,7 @@ plc_tag_p ab_tag_create(attr attribs)
 
     /* kick off a read to get the tag type and size. */
     if(tag->vtable->read) {
+        tag->read_in_flight = 1;
         tag->vtable->read((plc_tag_p)tag);
     }
 
@@ -673,7 +673,7 @@ int default_abort(plc_tag_p tag)
 
     pdebug(DEBUG_WARN, "This should be overridden by a PLC-specific function!");
 
-    return PLCTAG_STATUS_OK;
+    return PLCTAG_ERR_NOT_IMPLEMENTED;
 }
 
 
@@ -683,16 +683,18 @@ int default_read(plc_tag_p tag)
 
     pdebug(DEBUG_WARN, "This should be overridden by a PLC-specific function!");
 
-    return PLCTAG_STATUS_OK;
+    return PLCTAG_ERR_NOT_IMPLEMENTED;
 }
 
 int default_status(plc_tag_p tag)
 {
-    (void)tag;
-
     pdebug(DEBUG_WARN, "This should be overridden by a PLC-specific function!");
 
-    return PLCTAG_STATUS_OK;
+    if(tag) {
+        return tag->status;
+    } else {
+        return PLCTAG_ERR_NOT_FOUND;
+    }
 }
 
 
@@ -713,7 +715,7 @@ int default_write(plc_tag_p tag)
 
     pdebug(DEBUG_WARN, "This should be overridden by a PLC-specific function!");
 
-    return PLCTAG_STATUS_OK;
+    return PLCTAG_ERR_NOT_IMPLEMENTED;
 }
 
 
@@ -845,11 +847,17 @@ int ab_get_int_attrib(plc_tag_p raw_tag, const char *attrib_name, int default_va
 
     pdebug(DEBUG_SPEW, "Starting.");
 
+    /* assume we have a match. */
+    tag->status = PLCTAG_STATUS_OK;
+
     /* match the attribute. */
     if(str_cmp_i(attrib_name, "elem_size") == 0) {
         res = tag->elem_size;
     } else if(str_cmp_i(attrib_name, "elem_count") == 0) {
         res = tag->elem_count;
+    } else {
+        pdebug(DEBUG_WARN, "Unsupported attribute name \"%s\"!", attrib_name);
+        tag->status = PLCTAG_ERR_UNSUPPORTED;
     }
 
     return res;
@@ -858,9 +866,12 @@ int ab_get_int_attrib(plc_tag_p raw_tag, const char *attrib_name, int default_va
 
 int ab_set_int_attrib(plc_tag_p raw_tag, const char *attrib_name, int new_value)
 {
-    (void)raw_tag;
     (void)attrib_name;
     (void)new_value;
+
+    pdebug(DEBUG_WARN, "Unsupported attribute \"%s\"!", attrib_name);
+
+    raw_tag->status  = PLCTAG_ERR_UNSUPPORTED;
 
     return PLCTAG_ERR_UNSUPPORTED;
 }

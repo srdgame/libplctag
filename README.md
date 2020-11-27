@@ -15,7 +15,9 @@
   - [Help Wanted](#help-wanted)
     - [How to Contribute](#how-to-contribute)
   - [History](#history)
-  - [Contact](#contact)
+  - [Contact and Support](#contact-and-support)
+    - [libplctag Forum](#libplctag-forum)
+    - [GitHub](#github)
   - [License](#license)
   - [Attributions and Trademarks](#attributions-and-trademarks)
   - [End Note](#end-note)
@@ -109,7 +111,7 @@ The C library is designed for easy wrapping.  Wrappers for many other languages 
 - Go (included)
 - Pascal (included)
 - Part of the libplctag GitHub organization:
-  - C#, [libplctag.NET](https://github.com/libplctag/libplctag.NET).
+  - .Net Core, .Net Framework, [libplctag.NET](https://github.com/libplctag/libplctag.NET).
   - Julia, [PLCTag.jl](https://github.com/libplctag/PLCTag.jl).
 - Other wrappers on GitHub:
   - C#, [Corsinvest](https://github.com/Corsinvest/cv4ab-api-dotnet).
@@ -162,7 +164,7 @@ We need and welcome help with the following:
 
 We love contributions!   Many users have contributed wrappers, extra functionality and bug fixes over the years.   The library is much better for all the help that users have provided.   **We ask that your code contributions to the core library are under the same dual MPL/LGPL license.**
 
-Testing is difficult for us as we do not have access to all the different hardware out there.   If you can, a great way to contribute is to test prereleases.  These are on the _prerelease_ branch and can also be downloaded from the [releases](https://githubm.com/libplctag/libplctag/releases) page!  We appreciate all the help we get from our users this way.
+Testing is difficult for us as we do not have access to all the different hardware out there.   If you can, a great way to contribute is to test prereleases.  These are on the _prerelease_ branch and can also be downloaded from the [releases](https://github.com/libplctag/libplctag/releases) page!  We appreciate all the help we get from our users this way.
 
 The easiest way to contribute to the core library is to raise a PR on GitHub.
 
@@ -172,15 +174,21 @@ Wrappers in other languages are generally split off into separate projects.  Tho
 
 See the [wiki history page](https://github.com/libplctag/libplctag/wiki/History) for more details on how libplctag was created and why we built it.
 
-## Contact
+## Contact and Support
 
-There are two ways to contact us.
+There are two ways to ask for help or contact us.
+
+### libplctag Forum
 
 If you have general questions or comments about the
-library or its use, please join and post on the Google group [libplctag](https://groups.google.com/forum/#!forum/libplctag).
+library, its use, or about one of the wrapper libraries, please join the Google group
+[libplctag](https://groups.google.com/forum/#!forum/libplctag)!
+
 The forum is open to all, but is by request only to keep the spammers down.  The traffic is fairly
 light with usually a small number of emails per month.  It is our primary means for users to
 ask questions and for discussions to happen.   Announcements about released happen on the forum.
+
+### GitHub
 
 If you find bugs or need specific features, please file them on GitHub's issue tracker for
 the project.
